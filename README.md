@@ -21,6 +21,8 @@ Requisitos (elige una opción):
 Comandos con win_flex/win_bison (PowerShell o CMD):
 Nota: Ejecuta estos comandos desde la raiz del proyecto.
 
+Nota: `build\\build.bat` ya configura el PATH para el entorno antiguo del curso (GnuWin32 y Dev-Cpp/MinGW64).
+
 ```
 win_bison -d -o build\cmd_es.tab.c src\cmd_es.y
 win_flex  -o build\lex.yy.c      src\cmd_es.l

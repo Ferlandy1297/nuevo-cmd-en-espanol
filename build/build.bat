@@ -1,26 +1,32 @@
 @echo off
-setlocal ENABLEDELAYEDEXPANSION
+setlocal
 
-REM Construcción del CMD en español con win_flex/win_bison + gcc (MinGW)
-REM Requisitos: win_flex_bison3 y gcc en PATH
+REM Configurar PATH para entornos antiguos (GnuWin32 y Dev-Cpp / MinGW64)
+set "PATH=C:\PROGRA~2\GnuWin32\bin;C:\PROGRA~2\Dev-Cpp\MinGW64\bin;%PATH%"
 
-if not exist build mkdir build >nul 2>&1
+REM Crear carpeta build si no existe
+if not exist build mkdir build
 
-echo [1/3] Generando parser (Bison)
-win_bison -d -o build\cmd_es.tab.c src\cmd_es.y || goto :error
+echo [1/3] Generando parser (bison)
+bison -d -o build/cmd_es.tab.c src/cmd_es.y
+if errorlevel 1 goto error
 
-echo [2/3] Generando lexer (Flex)
-win_flex -o build\lex.yy.c src\cmd_es.l || goto :error
+echo [2/3] Generando lexer (flex)
+flex -t src\cmd_es.l > build\lex.yy.c
+if errorlevel 1 goto error
 
-echo [3/3] Compilando y enlazando (gcc)
-gcc -I build -o build\cmd-es.exe build\cmd_es.tab.c build\lex.yy.c || goto :error
+echo [3/3] Compilando ejecutable (gcc)
+gcc -I build -o build\cmd-es.exe build\cmd_es.tab.c build\lex.yy.c
+if errorlevel 1 goto error
 
 echo.
-echo Listo: build\cmd-es.exe
-exit /b 0
+echo Compilacion completada correctamente.
+goto end
 
 :error
 echo.
-echo ERROR en el proceso de compilacion. Asegura tener win_flex, win_bison y gcc en PATH.
+echo ERROR en el proceso de compilacion.
 exit /b 1
 
+:end
+endlocal

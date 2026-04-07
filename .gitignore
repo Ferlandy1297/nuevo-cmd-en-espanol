@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Entornos virtuales
+venv/
+.venv/
+env/
+
+# Editores
+.vscode/
+.idea/
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Artefactos generados por Flex/Bison y compilación
+build/*.exe
+build/*.o
+build/*.obj
+build/*.tab.c
+build/*.tab.h
+build/lex.yy.c
