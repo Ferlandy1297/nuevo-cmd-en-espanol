@@ -5,8 +5,8 @@ Proyecto académico para construir una nueva consola en español, inspirada en C
 Estado actual: Migración a base Flex/Bison con ejecutable mínimo.
 
 ## Estructura del proyecto (Flex/Bison)
-- `src/cmd_es.l` - lexer con Flex/WinFlex (tokens: AYUDA, VERSION, SALIR, NEWLINE; espacios/tabulaciones ignorados; otros se reportan como error léxico). El lexer es no sensible a mayúsculas/minúsculas.
-- `src/cmd_es.y` - parser con Bison/WinBison (una instrucción por línea; acciones visibles; salida con SALIR). Incluye recuperación por línea para errores sintácticos.
+- `src/cmd_es.l` - lexer con Flex/WinFlex (tokens: AYUDA, VERSION, SALIR, LIMPIAR, FECHA, HORA, NEWLINE; espacios/tabulaciones ignorados; otros se reportan como error léxico). El lexer es no sensible a mayúsculas/minúsculas.
+- `src/cmd_es.y` - parser con Bison/WinBison (una instrucción por línea; acciones visibles; salida con SALIR; fecha y hora del sistema). Incluye recuperación por línea para errores sintácticos.
 - `ejemplos/` - archivos de prueba (por ej. `comandos.txt`).
 - `build/` - artefactos generados y ejecutable (`cmd-es.exe`).
 - `legacy/` - intento previo en Python preservado (no se usa ahora).
@@ -50,6 +50,9 @@ type ejemplos\comandos.txt | build\cmd-es.exe
 ## Comportamiento
 - `AYUDA` muestra mensaje de ayuda.
 - `VERSION` imprime `CMD Espanol v0.1`.
+- `FECHA` muestra la fecha actual del sistema.
+- `HORA` muestra la hora actual del sistema.
+- `LIMPIAR` imprime varias lineas en blanco como limpieza simple compatible.
 - `SALIR` termina la ejecución.
 - Los comandos se aceptan sin diferenciar mayúsculas/minúsculas (por ejemplo, `ayuda`, `AyUdA`).
 
