@@ -1,22 +1,22 @@
-# Nuevo CMD en Español
+# Nuevo CMD en Espanol
 
-Proyecto académico para construir una nueva consola en español, inspirada en CMD de Windows. El objetivo es ofrecer comandos nativos en español y una experiencia clara para el curso de Compiladores.
+Proyecto academico para construir una nueva consola en espanol, inspirada en CMD de Windows. El objetivo es ofrecer comandos nativos en espanol y una experiencia clara para el curso de Compiladores.
 
-Estado actual: Migración a base Flex/Bison con ejecutable mínimo.
+Estado actual: Migracion a base Flex/Bison con ejecutable minimo y navegacion basica de directorios.
 
 ## Estructura del proyecto (Flex/Bison)
-- `src/cmd_es.l` - lexer con Flex/WinFlex (tokens: AYUDA, VERSION, SALIR, LIMPIAR, FECHA, HORA, NEWLINE; espacios/tabulaciones ignorados; otros se reportan como error léxico). El lexer es no sensible a mayúsculas/minúsculas.
-- `src/cmd_es.y` - parser con Bison/WinBison (una instrucción por línea; acciones visibles; salida con SALIR; fecha y hora del sistema). Incluye recuperación por línea para errores sintácticos.
+- `src/cmd_es.l` - lexer con Flex/WinFlex (tokens: AYUDA, VERSION, SALIR, LIMPIAR, FECHA, HORA, LISTAR, CAMBIAR_DIR, CREAR_DIR, ELIMINAR_DIR, NOMBRE y NEWLINE; espacios/tabulaciones ignorados; otros se reportan como error lexico). El lexer es no sensible a mayusculas/minusculas.
+- `src/cmd_es.y` - parser con Bison/WinBison (una instruccion por linea; acciones visibles; salida con SALIR; fecha y hora del sistema; navegacion basica de directorios). Incluye recuperacion por linea para errores sintacticos.
 - `ejemplos/` - archivos de prueba (por ej. `comandos.txt`).
 - `build/` - artefactos generados y ejecutable (`cmd-es.exe`).
 - `legacy/` - intento previo en Python preservado (no se usa ahora).
 
-Documentación adicional en `docs/` (alcance y tabla de comandos iniciales).
+Documentacion adicional en `docs/` (alcance y tabla de comandos iniciales).
 
-## Compilación y ejecución (Windows)
-Requisitos (elige una opción):
-- Opción A: `win_flex_bison3` + `gcc` (MinGW/MSYS2) en PATH.
-- Opción B: WSL con `flex`/`bison` y `gcc`.
+## Compilacion y ejecucion (Windows)
+Requisitos (elige una opcion):
+- Opcion A: `win_flex_bison3` + `gcc` (MinGW/MSYS2) en PATH.
+- Opcion B: WSL con `flex`/`bison` y `gcc`.
 
 Comandos con win_flex/win_bison (PowerShell o CMD):
 Nota: Ejecuta estos comandos desde la raiz del proyecto.
@@ -29,13 +29,13 @@ win_flex  -o build\lex.yy.c      src\cmd_es.l
 gcc -I build -o build\cmd-es.exe build\cmd_es.tab.c build\lex.yy.c
 ```
 
-También puedes usar el script:
+Tambien puedes usar el script:
 
 ```
 build\build.bat
 ```
 
-Ejecución interactiva desde consola:
+Ejecucion interactiva desde consola:
 
 ```
 build\cmd-es.exe
@@ -53,9 +53,13 @@ type ejemplos\comandos.txt | build\cmd-es.exe
 - `FECHA` muestra la fecha actual del sistema.
 - `HORA` muestra la hora actual del sistema.
 - `LIMPIAR` imprime varias lineas en blanco como limpieza simple compatible.
-- `SALIR` termina la ejecución.
-- Los comandos se aceptan sin diferenciar mayúsculas/minúsculas (por ejemplo, `ayuda`, `AyUdA`).
+- `LISTAR` muestra los subdirectorios del directorio actual.
+- `CAMBIAR_DIR <nombre>` cambia al directorio indicado si existe.
+- `CREAR_DIR <nombre>` crea un directorio en la ubicacion actual.
+- `ELIMINAR_DIR <nombre>` elimina un directorio vacio.
+- `SALIR` termina la ejecucion.
+- Los comandos se aceptan sin diferenciar mayusculas/minusculas (por ejemplo, `ayuda`, `AyUdA`).
 
 ### Errores
-- Error léxico: reportado por el lexer (caracteres o secuencias no válidas). Se imprime el mensaje y se continúa con el resto de la línea.
-- Error sintáctico: reportado por el parser cuando la secuencia de tokens válidos de una línea no forma una instrucción permitida. La gramática recupera en `NEWLINE` para continuar leyendo líneas siguientes.
+- Error lexico: reportado por el lexer (caracteres o secuencias no validas). Se imprime el mensaje y se continua con el resto de la linea.
+- Error sintactico: reportado por el parser cuando la secuencia de tokens validos de una linea no forma una instruccion permitida. La gramatica recupera en `NEWLINE` para continuar leyendo lineas siguientes.
