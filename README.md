@@ -53,7 +53,7 @@ type ejemplos\comandos.txt | build\cmd-es.exe
 - `FECHA` muestra la fecha actual del sistema.
 - `HORA` muestra la hora actual del sistema.
 - `LIMPIAR` imprime varias lineas en blanco como limpieza simple compatible.
-- `LISTAR` muestra los subdirectorios del directorio actual.
+- `LISTAR` muestra los directorios y archivos del directorio actual usando el formato `[DIR] nombre` y `[ARC] nombre`.
 - `CAMBIAR_DIR <nombre>`, `CAMBIAR_DIR .` y `CAMBIAR_DIR ..` cambian al directorio indicado y luego muestran la ruta actual.
 - `CREAR_DIR <nombre>` crea un directorio en la ubicacion actual.
 - `ELIMINAR_DIR <nombre>` elimina un directorio vacio.

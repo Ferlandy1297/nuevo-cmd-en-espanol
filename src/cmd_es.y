@@ -16,7 +16,7 @@ static void mostrar_ayuda(void);
 static void limpiar_pantalla_simple(void);
 static void mostrar_fecha_actual(void);
 static void mostrar_hora_actual(void);
-static void listar_directorios(void);
+static void listar_elementos(void);
 static void cambiar_directorio(const char *nombre);
 static void crear_directorio(const char *nombre);
 static void eliminar_directorio(const char *nombre);
@@ -62,7 +62,7 @@ linea
     | LIMPIAR NEWLINE             { if (!cmd_es_linea_invalida) { limpiar_pantalla_simple(); } reiniciar_estado_linea(); }
     | FECHA NEWLINE               { if (!cmd_es_linea_invalida) { mostrar_fecha_actual(); } reiniciar_estado_linea(); }
     | HORA NEWLINE                { if (!cmd_es_linea_invalida) { mostrar_hora_actual(); } reiniciar_estado_linea(); }
-    | LISTAR NEWLINE              { if (!cmd_es_linea_invalida) { listar_directorios(); } reiniciar_estado_linea(); }
+    | LISTAR NEWLINE              { if (!cmd_es_linea_invalida) { listar_elementos(); } reiniciar_estado_linea(); }
     | CAMBIAR_DIR NOMBRE NEWLINE  { if (!cmd_es_linea_invalida) { cambiar_directorio($2); } free($2); reiniciar_estado_linea(); }
     | CAMBIAR_DIR PUNTO NEWLINE   { if (!cmd_es_linea_invalida) { cambiar_directorio("."); } reiniciar_estado_linea(); }
     | CAMBIAR_DIR PUNTO_PUNTO NEWLINE { if (!cmd_es_linea_invalida) { cambiar_directorio(".."); } reiniciar_estado_linea(); }
@@ -143,17 +143,17 @@ static void mostrar_hora_actual(void) {
     printf("%s\n", buffer);
 }
 
-static void listar_directorios(void) {
+static void listar_elementos(void) {
     WIN32_FIND_DATAA datos;
     HANDLE manejador;
-    int encontrado;
+    int hay_elementos;
 
-    encontrado = 0;
+    hay_elementos = 0;
     manejador = FindFirstFileA("*", &datos);
 
     if (manejador == INVALID_HANDLE_VALUE) {
         if (GetLastError() == ERROR_FILE_NOT_FOUND) {
-            printf("No hay directorios en el directorio actual.\n");
+            printf("No hay elementos en el directorio actual.\n");
         } else {
             printf("No se pudo listar el directorio actual.\n");
         }
@@ -161,18 +161,23 @@ static void listar_directorios(void) {
     }
 
     do {
-        if ((datos.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0) {
-            if (strcmp(datos.cFileName, ".") != 0 && strcmp(datos.cFileName, "..") != 0) {
-                printf("%s/\n", datos.cFileName);
-                encontrado = 1;
-            }
+        if (strcmp(datos.cFileName, ".") == 0 || strcmp(datos.cFileName, "..") == 0) {
+            continue;
         }
+
+        if ((datos.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0) {
+            printf("[DIR] %s\n", datos.cFileName);
+        } else {
+            printf("[ARC] %s\n", datos.cFileName);
+        }
+
+        hay_elementos = 1;
     } while (FindNextFileA(manejador, &datos) != 0);
 
     FindClose(manejador);
 
-    if (!encontrado) {
-        printf("No hay directorios en el directorio actual.\n");
+    if (!hay_elementos) {
+        printf("No hay elementos en el directorio actual.\n");
     }
 }
 

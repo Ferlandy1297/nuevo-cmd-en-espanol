@@ -1,8 +1,3 @@
 AYUDA
-MOSTRAR ejemplo.txt
-COPIAR ejemplo.txt copia.txt
-MOSTRAR copia.txt
-MOVER copia.txt movido.txt
-MOSTRAR movido.txt
-ELIMINAR movido.txt
+LISTAR
 SALIR
