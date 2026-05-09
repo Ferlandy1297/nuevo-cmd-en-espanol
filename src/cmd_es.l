@@ -3,6 +3,8 @@
 %option nounput
 %option noinput
 
+%x ESTADO_TEXTO ESTADO_COLOR
+
 %{
 #include "cmd_es.tab.h"
 #include <stdio.h>
@@ -22,6 +24,11 @@ LIMPIAR_K       [Ll][Ii][Mm][Pp][Ii][Aa][Rr]
 FECHA_K         [Ff][Ee][Cc][Hh][Aa]
 HORA_K          [Hh][Oo][Rr][Aa]
 LISTAR_K        [Ll][Ii][Ss][Tt][Aa][Rr]
+ECO_K           [Ee][Cc][Oo]
+PAUSA_K         [Pp][Aa][Uu][Ss][Aa]
+TITULO_K        [Tt][Ii][Tt][Uu][Ll][Oo]
+COLOR_K         [Cc][Oo][Ll][Oo][Rr]
+ARBOL_K         [Aa][Rr][Bb][Oo][Ll]
 CAMBIAR_DIR_K   [Cc][Aa][Mm][Bb][Ii][Aa][Rr]_[Dd][Ii][Rr]
 CREAR_DIR_K     [Cc][Rr][Ee][Aa][Rr]_[Dd][Ii][Rr]
 ELIMINAR_DIR_K  [Ee][Ll][Ii][Mm][Ii][Nn][Aa][Rr]_[Dd][Ii][Rr]
@@ -35,31 +42,51 @@ PUNTO_K         \.
 NOMBRE_DIR      [A-Za-z0-9_][A-Za-z0-9_.-]*
 
 %%
-{WS}                ;
-{AYUDA_K}           return AYUDA;
-{VERSION_K}         return VERSION;
-{SALIR_K}           return SALIR;
-{LIMPIAR_K}         return LIMPIAR;
-{FECHA_K}           return FECHA;
-{HORA_K}            return HORA;
-{LISTAR_K}          return LISTAR;
-{CAMBIAR_DIR_K}     return CAMBIAR_DIR;
-{CREAR_DIR_K}       return CREAR_DIR;
-{ELIMINAR_DIR_K}    return ELIMINAR_DIR;
-{MOSTRAR_K}         return MOSTRAR;
-{ELIMINAR_K}        return ELIMINAR;
-{RENOMBRAR_K}       return RENOMBRAR;
-{COPIAR_K}          return COPIAR;
-{MOVER_K}           return MOVER;
-{PUNTO_PUNTO_K}     return PUNTO_PUNTO;
-{PUNTO_K}           return PUNTO;
-{NOMBRE_DIR}        {
+<INITIAL>{WS}                ;
+<INITIAL>{AYUDA_K}           return AYUDA;
+<INITIAL>{VERSION_K}         return VERSION;
+<INITIAL>{SALIR_K}           return SALIR;
+<INITIAL>{LIMPIAR_K}         return LIMPIAR;
+<INITIAL>{FECHA_K}           return FECHA;
+<INITIAL>{HORA_K}            return HORA;
+<INITIAL>{LISTAR_K}          return LISTAR;
+<INITIAL>{ECO_K}             { BEGIN(ESTADO_TEXTO); return ECO; }
+<INITIAL>{PAUSA_K}           return PAUSA;
+<INITIAL>{TITULO_K}          { BEGIN(ESTADO_TEXTO); return TITULO; }
+<INITIAL>{COLOR_K}           { BEGIN(ESTADO_COLOR); return COLOR; }
+<INITIAL>{ARBOL_K}           return ARBOL;
+<INITIAL>{CAMBIAR_DIR_K}     return CAMBIAR_DIR;
+<INITIAL>{CREAR_DIR_K}       return CREAR_DIR;
+<INITIAL>{ELIMINAR_DIR_K}    return ELIMINAR_DIR;
+<INITIAL>{MOSTRAR_K}         return MOSTRAR;
+<INITIAL>{ELIMINAR_K}        return ELIMINAR;
+<INITIAL>{RENOMBRAR_K}       return RENOMBRAR;
+<INITIAL>{COPIAR_K}          return COPIAR;
+<INITIAL>{MOVER_K}           return MOVER;
+<INITIAL>{PUNTO_PUNTO_K}     return PUNTO_PUNTO;
+<INITIAL>{PUNTO_K}           return PUNTO;
+<INITIAL>{NOMBRE_DIR}        {
                         yylval.texto = duplicar_texto(yytext);
                         return NOMBRE;
                     }
-\n                  return NEWLINE;
+<ESTADO_TEXTO>{WS}           ;
+<ESTADO_TEXTO>[^ \t\r\n][^\r\n]* {
+                        yylval.texto = duplicar_texto(yytext);
+                        BEGIN(INITIAL);
+                        return TEXTO;
+                    }
+<ESTADO_COLOR>{WS}           ;
+<ESTADO_COLOR>[^ \t\r\n][^\r\n]* {
+                        yylval.texto = duplicar_texto(yytext);
+                        BEGIN(INITIAL);
+                        return TEXTO;
+                    }
+<INITIAL,ESTADO_TEXTO,ESTADO_COLOR>\n {
+                        BEGIN(INITIAL);
+                        return NEWLINE;
+                    }
 
-.                   {
+<INITIAL>.                   {
                         cmd_es_linea_invalida = 1;
                         fprintf(stderr, "Error lexico (linea %d): '%s'\n", yylineno, yytext);
                     }

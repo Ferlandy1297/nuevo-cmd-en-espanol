@@ -1,4 +1,6 @@
 %{
+#include <ctype.h>
+#include <conio.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -17,6 +19,11 @@ static void limpiar_pantalla_simple(void);
 static void mostrar_fecha_actual(void);
 static void mostrar_hora_actual(void);
 static void listar_elementos(void);
+static void eco_texto(const char *texto);
+static void pausar_consola(void);
+static void cambiar_titulo_consola(const char *texto);
+static void cambiar_color_consola(const char *codigo);
+static void mostrar_arbol_directorios(void);
 static void cambiar_directorio(const char *nombre);
 static void crear_directorio(const char *nombre);
 static void eliminar_directorio(const char *nombre);
@@ -25,6 +32,11 @@ static void eliminar_archivo(const char *nombre);
 static void renombrar_archivo(const char *origen, const char *destino);
 static void copiar_archivo(const char *origen, const char *destino);
 static void mover_archivo(const char *origen, const char *destino);
+static void imprimir_arbol_directorio(const char *ruta, int nivel, int *hay_subdirectorios);
+static void imprimir_sangria_arbol(int nivel);
+static int copiar_texto_recortado(const char *texto, char *destino, size_t tamanio);
+static int es_hexadecimal(char caracter);
+static int valor_hexadecimal(char caracter);
 static void mostrar_directorio_actual(void);
 static const char *descripcion_error_operacion(int codigo_error);
 static int numero_linea_comando(void);
@@ -36,12 +48,12 @@ static void reiniciar_estado_linea(void);
 }
 
 %token AYUDA VERSION SALIR LIMPIAR FECHA HORA
-%token LISTAR CAMBIAR_DIR CREAR_DIR ELIMINAR_DIR MOSTRAR ELIMINAR RENOMBRAR COPIAR MOVER
+%token LISTAR ECO PAUSA TITULO COLOR ARBOL CAMBIAR_DIR CREAR_DIR ELIMINAR_DIR MOSTRAR ELIMINAR RENOMBRAR COPIAR MOVER
 %token PUNTO PUNTO_PUNTO
 %token NEWLINE
-%token <texto> NOMBRE
+%token <texto> NOMBRE TEXTO
 
-%destructor { free($$); } NOMBRE
+%destructor { free($$); } NOMBRE TEXTO
 
 /* Nota: Los comandos se reconocen sin diferenciar mayusculas/minusculas
    (ver reglas del lexer). */
@@ -63,6 +75,11 @@ linea
     | FECHA NEWLINE               { if (!cmd_es_linea_invalida) { mostrar_fecha_actual(); } reiniciar_estado_linea(); }
     | HORA NEWLINE                { if (!cmd_es_linea_invalida) { mostrar_hora_actual(); } reiniciar_estado_linea(); }
     | LISTAR NEWLINE              { if (!cmd_es_linea_invalida) { listar_elementos(); } reiniciar_estado_linea(); }
+    | ECO TEXTO NEWLINE           { if (!cmd_es_linea_invalida) { eco_texto($2); } free($2); reiniciar_estado_linea(); }
+    | PAUSA NEWLINE               { if (!cmd_es_linea_invalida) { pausar_consola(); } reiniciar_estado_linea(); }
+    | TITULO TEXTO NEWLINE        { if (!cmd_es_linea_invalida) { cambiar_titulo_consola($2); } free($2); reiniciar_estado_linea(); }
+    | COLOR TEXTO NEWLINE         { if (!cmd_es_linea_invalida) { cambiar_color_consola($2); } free($2); reiniciar_estado_linea(); }
+    | ARBOL NEWLINE               { if (!cmd_es_linea_invalida) { mostrar_arbol_directorios(); } reiniciar_estado_linea(); }
     | CAMBIAR_DIR NOMBRE NEWLINE  { if (!cmd_es_linea_invalida) { cambiar_directorio($2); } free($2); reiniciar_estado_linea(); }
     | CAMBIAR_DIR PUNTO NEWLINE   { if (!cmd_es_linea_invalida) { cambiar_directorio("."); } reiniciar_estado_linea(); }
     | CAMBIAR_DIR PUNTO_PUNTO NEWLINE { if (!cmd_es_linea_invalida) { cambiar_directorio(".."); } reiniciar_estado_linea(); }
@@ -73,6 +90,9 @@ linea
     | RENOMBRAR NOMBRE NOMBRE NEWLINE { if (!cmd_es_linea_invalida) { renombrar_archivo($2, $3); } free($2); free($3); reiniciar_estado_linea(); }
     | COPIAR NOMBRE NOMBRE NEWLINE { if (!cmd_es_linea_invalida) { copiar_archivo($2, $3); } free($2); free($3); reiniciar_estado_linea(); }
     | MOVER NOMBRE NOMBRE NEWLINE { if (!cmd_es_linea_invalida) { mover_archivo($2, $3); } free($2); free($3); reiniciar_estado_linea(); }
+    | ECO NEWLINE                 { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): ECO requiere un texto.\n", numero_linea_comando()); } reiniciar_estado_linea(); }
+    | TITULO NEWLINE              { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): TITULO requiere un texto.\n", numero_linea_comando()); } reiniciar_estado_linea(); }
+    | COLOR NEWLINE               { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): COLOR requiere un codigo.\n", numero_linea_comando()); } reiniciar_estado_linea(); }
     | CAMBIAR_DIR NEWLINE         { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): CAMBIAR_DIR requiere un nombre.\n", numero_linea_comando()); } reiniciar_estado_linea(); }
     | CREAR_DIR NEWLINE           { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): CREAR_DIR requiere un nombre.\n", numero_linea_comando()); } reiniciar_estado_linea(); }
     | ELIMINAR_DIR NEWLINE        { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): ELIMINAR_DIR requiere un nombre.\n", numero_linea_comando()); } reiniciar_estado_linea(); }
@@ -85,12 +105,12 @@ linea
     | MOVER NEWLINE               { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): MOVER requiere un nombre de origen y otro de destino.\n", numero_linea_comando()); } reiniciar_estado_linea(); }
     | MOVER NOMBRE NEWLINE        { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): MOVER requiere un nombre de origen y otro de destino.\n", numero_linea_comando()); } free($2); reiniciar_estado_linea(); }
     | NEWLINE                     { reiniciar_estado_linea(); }
-    | error NEWLINE               { reiniciar_estado_linea(); yyerrok; }   /* recuperacion por linea */
+    | error NEWLINE               { reiniciar_estado_linea(); yyerrok; }
     ;
 %%
 
 static void mostrar_ayuda(void) {
-    printf("AYUDA: Comandos disponibles: AYUDA, VERSION, FECHA, HORA, LIMPIAR, LISTAR, CAMBIAR_DIR <nombre | . | ..>, CREAR_DIR <nombre>, ELIMINAR_DIR <nombre>, MOSTRAR <archivo>, ELIMINAR <archivo>, RENOMBRAR <origen> <destino>, COPIAR <origen> <destino>, MOVER <origen> <destino>, SALIR\n");
+    printf("AYUDA: Comandos disponibles: AYUDA, VERSION, FECHA, HORA, LIMPIAR, LISTAR, ECO <texto>, PAUSA, TITULO <texto>, COLOR <codigo>, ARBOL, CAMBIAR_DIR <nombre | . | ..>, CREAR_DIR <nombre>, ELIMINAR_DIR <nombre>, MOSTRAR <archivo>, ELIMINAR <archivo>, RENOMBRAR <origen> <destino>, COPIAR <origen> <destino>, MOVER <origen> <destino>, SALIR\n");
 }
 
 static void limpiar_pantalla_simple(void) {
@@ -178,6 +198,97 @@ static void listar_elementos(void) {
 
     if (!hay_elementos) {
         printf("No hay elementos en el directorio actual.\n");
+    }
+}
+
+static void eco_texto(const char *texto) {
+    printf("%s\n", texto);
+}
+
+static void pausar_consola(void) {
+    printf("Presione una tecla para continuar...");
+    fflush(stdout);
+    _getch();
+    putchar('\n');
+}
+
+static void cambiar_titulo_consola(const char *texto) {
+    if (SetConsoleTitleA(texto) == 0) {
+        printf("No se pudo cambiar el titulo de la consola.\n");
+    }
+}
+
+static void cambiar_color_consola(const char *codigo) {
+    char codigo_limpio[16];
+    int fondo;
+    int texto_color;
+    HANDLE salida;
+    int cerrar_salida;
+
+    if (!copiar_texto_recortado(codigo, codigo_limpio, sizeof(codigo_limpio))) {
+        printf("Codigo de COLOR invalido. Use dos digitos hexadecimales, por ejemplo 0A.\n");
+        return;
+    }
+
+    if (strlen(codigo_limpio) != 2 || !es_hexadecimal(codigo_limpio[0]) || !es_hexadecimal(codigo_limpio[1])) {
+        printf("Codigo de COLOR invalido. Use dos digitos hexadecimales, por ejemplo 0A.\n");
+        return;
+    }
+
+    fondo = valor_hexadecimal(codigo_limpio[0]);
+    texto_color = valor_hexadecimal(codigo_limpio[1]);
+
+    if (fondo == texto_color) {
+        printf("Codigo de COLOR invalido: fondo y texto no deben ser iguales.\n");
+        return;
+    }
+
+    salida = CreateFileA(
+        "CONOUT$",
+        GENERIC_READ | GENERIC_WRITE,
+        FILE_SHARE_READ | FILE_SHARE_WRITE,
+        NULL,
+        OPEN_EXISTING,
+        0,
+        NULL
+    );
+    cerrar_salida = 0;
+
+    if (salida != INVALID_HANDLE_VALUE) {
+        cerrar_salida = 1;
+    } else {
+        salida = GetStdHandle(STD_OUTPUT_HANDLE);
+    }
+
+    if (salida == NULL || salida == INVALID_HANDLE_VALUE) {
+        printf("No se pudo cambiar el color de la consola.\n");
+        return;
+    }
+
+    if (SetConsoleTextAttribute(salida, (WORD)((fondo << 4) | texto_color)) == 0) {
+        printf("No se pudo cambiar el color de la consola.\n");
+    }
+
+    if (cerrar_salida) {
+        CloseHandle(salida);
+    }
+}
+
+static void mostrar_arbol_directorios(void) {
+    char directorio_actual[MAX_PATH];
+    int hay_subdirectorios;
+
+    if (_getcwd(directorio_actual, sizeof(directorio_actual)) == NULL) {
+        printf("No se pudo obtener el directorio actual.\n");
+        return;
+    }
+
+    printf("%s\n", directorio_actual);
+    hay_subdirectorios = 0;
+    imprimir_arbol_directorio(directorio_actual, 0, &hay_subdirectorios);
+
+    if (!hay_subdirectorios) {
+        printf("No hay subdirectorios en el directorio actual.\n");
     }
 }
 
@@ -364,8 +475,9 @@ static void copiar_archivo(const char *origen, const char *destino) {
 
     while ((bytes_leidos = fread(buffer, 1, sizeof(buffer), archivo_origen)) > 0) {
         if (fwrite(buffer, 1, bytes_leidos, archivo_destino) != bytes_leidos) {
-            int codigo_error = errno;
+            int codigo_error;
 
+            codigo_error = errno;
             printf("No se pudo escribir completamente el archivo '%s': %s.\n", destino, descripcion_error_operacion(codigo_error));
             fclose(archivo_origen);
             fclose(archivo_destino);
@@ -375,8 +487,9 @@ static void copiar_archivo(const char *origen, const char *destino) {
     }
 
     if (ferror(archivo_origen)) {
-        int codigo_error = errno;
+        int codigo_error;
 
+        codigo_error = errno;
         printf("No se pudo leer completamente el archivo '%s': %s.\n", origen, descripcion_error_operacion(codigo_error));
         fclose(archivo_origen);
         fclose(archivo_destino);
@@ -387,8 +500,9 @@ static void copiar_archivo(const char *origen, const char *destino) {
     fclose(archivo_origen);
 
     if (fclose(archivo_destino) != 0) {
-        int codigo_error = errno;
+        int codigo_error;
 
+        codigo_error = errno;
         printf("No se pudo finalizar la copia hacia '%s': %s.\n", destino, descripcion_error_operacion(codigo_error));
         remove(destino);
         return;
@@ -426,6 +540,131 @@ static void mover_archivo(const char *origen, const char *destino) {
     }
 
     printf("Archivo movido: %s -> %s\n", origen, destino);
+}
+
+static void imprimir_arbol_directorio(const char *ruta, int nivel, int *hay_subdirectorios) {
+    WIN32_FIND_DATAA datos;
+    HANDLE manejador;
+    char patron[MAX_PATH];
+    size_t longitud_ruta;
+
+    longitud_ruta = strlen(ruta);
+
+    if (longitud_ruta + 3 >= sizeof(patron)) {
+        if (nivel == 0) {
+            printf("No se pudo generar el arbol: ruta demasiado larga.\n");
+        }
+        return;
+    }
+
+    strcpy(patron, ruta);
+
+    if (longitud_ruta > 0 && ruta[longitud_ruta - 1] != '\\' && ruta[longitud_ruta - 1] != '/') {
+        patron[longitud_ruta] = '\\';
+        patron[longitud_ruta + 1] = '*';
+        patron[longitud_ruta + 2] = '\0';
+    } else {
+        patron[longitud_ruta] = '*';
+        patron[longitud_ruta + 1] = '\0';
+    }
+
+    manejador = FindFirstFileA(patron, &datos);
+
+    if (manejador == INVALID_HANDLE_VALUE) {
+        return;
+    }
+
+    do {
+        char ruta_hija[MAX_PATH];
+        size_t longitud_nombre;
+
+        if (strcmp(datos.cFileName, ".") == 0 || strcmp(datos.cFileName, "..") == 0) {
+            continue;
+        }
+
+        if ((datos.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0) {
+            continue;
+        }
+
+        *hay_subdirectorios = 1;
+        imprimir_sangria_arbol(nivel);
+        printf("+-- %s\n", datos.cFileName);
+
+        longitud_nombre = strlen(datos.cFileName);
+
+        if (longitud_ruta + longitud_nombre + 2 >= sizeof(ruta_hija)) {
+            imprimir_sangria_arbol(nivel + 1);
+            printf("+-- [ruta demasiado larga]\n");
+            continue;
+        }
+
+        strcpy(ruta_hija, ruta);
+
+        if (longitud_ruta > 0 && ruta[longitud_ruta - 1] != '\\' && ruta[longitud_ruta - 1] != '/') {
+            ruta_hija[longitud_ruta] = '\\';
+            ruta_hija[longitud_ruta + 1] = '\0';
+        }
+
+        strcat(ruta_hija, datos.cFileName);
+        imprimir_arbol_directorio(ruta_hija, nivel + 1, hay_subdirectorios);
+    } while (FindNextFileA(manejador, &datos) != 0);
+
+    FindClose(manejador);
+}
+
+static void imprimir_sangria_arbol(int nivel) {
+    int i;
+
+    for (i = 0; i < nivel; ++i) {
+        printf("|   ");
+    }
+}
+
+static int copiar_texto_recortado(const char *texto, char *destino, size_t tamanio) {
+    const char *inicio;
+    const char *fin;
+    size_t longitud;
+
+    if (tamanio == 0) {
+        return 0;
+    }
+
+    inicio = texto;
+
+    while (*inicio == ' ' || *inicio == '\t' || *inicio == '\r') {
+        ++inicio;
+    }
+
+    fin = inicio + strlen(inicio);
+
+    while (fin > inicio && (fin[-1] == ' ' || fin[-1] == '\t' || fin[-1] == '\r')) {
+        --fin;
+    }
+
+    longitud = (size_t)(fin - inicio);
+
+    if (longitud >= tamanio) {
+        return 0;
+    }
+
+    memcpy(destino, inicio, longitud);
+    destino[longitud] = '\0';
+    return 1;
+}
+
+static int es_hexadecimal(char caracter) {
+    return (caracter >= '0' && caracter <= '9')
+        || (caracter >= 'A' && caracter <= 'F')
+        || (caracter >= 'a' && caracter <= 'f');
+}
+
+static int valor_hexadecimal(char caracter) {
+    if (caracter >= '0' && caracter <= '9') {
+        return caracter - '0';
+    }
+
+    caracter = (char)toupper((unsigned char)caracter);
+    return caracter - 'A' + 10;
 }
 
 static void mostrar_directorio_actual(void) {

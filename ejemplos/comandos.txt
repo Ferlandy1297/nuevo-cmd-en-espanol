@@ -1,3 +1,7 @@
 AYUDA
-LISTAR
+ECO Hola desde el nuevo CMD en espanol
+TITULO Demo CMD Espanol
+COLOR 0A
+ARBOL
+PAUSA
 SALIR
