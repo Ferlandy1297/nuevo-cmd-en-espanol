@@ -20,8 +20,11 @@ static void listar_directorios(void);
 static void cambiar_directorio(const char *nombre);
 static void crear_directorio(const char *nombre);
 static void eliminar_directorio(const char *nombre);
+static void mostrar_archivo(const char *nombre);
+static void eliminar_archivo(const char *nombre);
+static void renombrar_archivo(const char *origen, const char *destino);
 static void mostrar_directorio_actual(void);
-static const char *descripcion_error_directorio(int codigo_error);
+static const char *descripcion_error_operacion(int codigo_error);
 static int numero_linea_comando(void);
 static void reiniciar_estado_linea(void);
 %}
@@ -31,7 +34,7 @@ static void reiniciar_estado_linea(void);
 }
 
 %token AYUDA VERSION SALIR LIMPIAR FECHA HORA
-%token LISTAR CAMBIAR_DIR CREAR_DIR ELIMINAR_DIR
+%token LISTAR CAMBIAR_DIR CREAR_DIR ELIMINAR_DIR MOSTRAR ELIMINAR RENOMBRAR
 %token PUNTO PUNTO_PUNTO
 %token NEWLINE
 %token <texto> NOMBRE
@@ -63,16 +66,23 @@ linea
     | CAMBIAR_DIR PUNTO_PUNTO NEWLINE { if (!cmd_es_linea_invalida) { cambiar_directorio(".."); } reiniciar_estado_linea(); }
     | CREAR_DIR NOMBRE NEWLINE    { if (!cmd_es_linea_invalida) { crear_directorio($2); } free($2); reiniciar_estado_linea(); }
     | ELIMINAR_DIR NOMBRE NEWLINE { if (!cmd_es_linea_invalida) { eliminar_directorio($2); } free($2); reiniciar_estado_linea(); }
+    | MOSTRAR NOMBRE NEWLINE      { if (!cmd_es_linea_invalida) { mostrar_archivo($2); } free($2); reiniciar_estado_linea(); }
+    | ELIMINAR NOMBRE NEWLINE     { if (!cmd_es_linea_invalida) { eliminar_archivo($2); } free($2); reiniciar_estado_linea(); }
+    | RENOMBRAR NOMBRE NOMBRE NEWLINE { if (!cmd_es_linea_invalida) { renombrar_archivo($2, $3); } free($2); free($3); reiniciar_estado_linea(); }
     | CAMBIAR_DIR NEWLINE         { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): CAMBIAR_DIR requiere un nombre.\n", numero_linea_comando()); } reiniciar_estado_linea(); }
     | CREAR_DIR NEWLINE           { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): CREAR_DIR requiere un nombre.\n", numero_linea_comando()); } reiniciar_estado_linea(); }
     | ELIMINAR_DIR NEWLINE        { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): ELIMINAR_DIR requiere un nombre.\n", numero_linea_comando()); } reiniciar_estado_linea(); }
+    | MOSTRAR NEWLINE             { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): MOSTRAR requiere un nombre de archivo.\n", numero_linea_comando()); } reiniciar_estado_linea(); }
+    | ELIMINAR NEWLINE            { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): ELIMINAR requiere un nombre de archivo.\n", numero_linea_comando()); } reiniciar_estado_linea(); }
+    | RENOMBRAR NEWLINE           { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): RENOMBRAR requiere un nombre de origen y otro de destino.\n", numero_linea_comando()); } reiniciar_estado_linea(); }
+    | RENOMBRAR NOMBRE NEWLINE    { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): RENOMBRAR requiere un nombre de origen y otro de destino.\n", numero_linea_comando()); } free($2); reiniciar_estado_linea(); }
     | NEWLINE                     { reiniciar_estado_linea(); }
     | error NEWLINE               { reiniciar_estado_linea(); yyerrok; }   /* recuperacion por linea */
     ;
 %%
 
 static void mostrar_ayuda(void) {
-    printf("AYUDA: Comandos disponibles: AYUDA, VERSION, FECHA, HORA, LIMPIAR, LISTAR, CAMBIAR_DIR <nombre | . | ..>, CREAR_DIR <nombre>, ELIMINAR_DIR <nombre>, SALIR\n");
+    printf("AYUDA: Comandos disponibles: AYUDA, VERSION, FECHA, HORA, LIMPIAR, LISTAR, CAMBIAR_DIR <nombre | . | ..>, CREAR_DIR <nombre>, ELIMINAR_DIR <nombre>, MOSTRAR <archivo>, ELIMINAR <archivo>, RENOMBRAR <origen> <destino>, SALIR\n");
 }
 
 static void limpiar_pantalla_simple(void) {
@@ -160,7 +170,7 @@ static void listar_directorios(void) {
 
 static void cambiar_directorio(const char *nombre) {
     if (_chdir(nombre) != 0) {
-        printf("No se pudo cambiar al directorio '%s': %s.\n", nombre, descripcion_error_directorio(errno));
+        printf("No se pudo cambiar al directorio '%s': %s.\n", nombre, descripcion_error_operacion(errno));
         return;
     }
 
@@ -169,7 +179,7 @@ static void cambiar_directorio(const char *nombre) {
 
 static void crear_directorio(const char *nombre) {
     if (_mkdir(nombre) != 0) {
-        printf("No se pudo crear el directorio '%s': %s.\n", nombre, descripcion_error_directorio(errno));
+        printf("No se pudo crear el directorio '%s': %s.\n", nombre, descripcion_error_operacion(errno));
         return;
     }
 
@@ -178,11 +188,123 @@ static void crear_directorio(const char *nombre) {
 
 static void eliminar_directorio(const char *nombre) {
     if (_rmdir(nombre) != 0) {
-        printf("No se pudo eliminar el directorio '%s': %s.\n", nombre, descripcion_error_directorio(errno));
+        printf("No se pudo eliminar el directorio '%s': %s.\n", nombre, descripcion_error_operacion(errno));
         return;
     }
 
     printf("Directorio eliminado: %s\n", nombre);
+}
+
+static void mostrar_archivo(const char *nombre) {
+    DWORD atributos;
+    FILE *archivo;
+    char buffer[512];
+    int archivo_vacio;
+    int ultimo_fue_salto;
+
+    atributos = GetFileAttributesA(nombre);
+
+    if (atributos == INVALID_FILE_ATTRIBUTES) {
+        printf("No se pudo mostrar el archivo '%s': no existe.\n", nombre);
+        return;
+    }
+
+    if ((atributos & FILE_ATTRIBUTE_DIRECTORY) != 0) {
+        printf("No se pudo mostrar '%s': es un directorio.\n", nombre);
+        return;
+    }
+
+    archivo = fopen(nombre, "r");
+
+    if (archivo == NULL) {
+        printf("No se pudo abrir el archivo '%s': %s.\n", nombre, descripcion_error_operacion(errno));
+        return;
+    }
+
+    archivo_vacio = 1;
+    ultimo_fue_salto = 1;
+
+    while (fgets(buffer, sizeof(buffer), archivo) != NULL) {
+        size_t longitud;
+
+        printf("%s", buffer);
+        archivo_vacio = 0;
+        longitud = strlen(buffer);
+
+        if (longitud > 0 && buffer[longitud - 1] == '\n') {
+            ultimo_fue_salto = 1;
+        } else {
+            ultimo_fue_salto = 0;
+        }
+    }
+
+    if (ferror(archivo)) {
+        printf("No se pudo leer completamente el archivo '%s'.\n", nombre);
+        fclose(archivo);
+        return;
+    }
+
+    fclose(archivo);
+
+    if (archivo_vacio) {
+        printf("Archivo vacio.\n");
+    } else if (!ultimo_fue_salto) {
+        putchar('\n');
+    }
+}
+
+static void eliminar_archivo(const char *nombre) {
+    DWORD atributos;
+
+    atributos = GetFileAttributesA(nombre);
+
+    if (atributos == INVALID_FILE_ATTRIBUTES) {
+        printf("No se pudo eliminar el archivo '%s': no existe.\n", nombre);
+        return;
+    }
+
+    if ((atributos & FILE_ATTRIBUTE_DIRECTORY) != 0) {
+        printf("No se pudo eliminar '%s': es un directorio. Use ELIMINAR_DIR.\n", nombre);
+        return;
+    }
+
+    if (remove(nombre) != 0) {
+        printf("No se pudo eliminar el archivo '%s': %s.\n", nombre, descripcion_error_operacion(errno));
+        return;
+    }
+
+    printf("Archivo eliminado: %s\n", nombre);
+}
+
+static void renombrar_archivo(const char *origen, const char *destino) {
+    DWORD atributos_origen;
+    DWORD atributos_destino;
+
+    atributos_origen = GetFileAttributesA(origen);
+
+    if (atributos_origen == INVALID_FILE_ATTRIBUTES) {
+        printf("No se pudo renombrar '%s' a '%s': el origen no existe.\n", origen, destino);
+        return;
+    }
+
+    if ((atributos_origen & FILE_ATTRIBUTE_DIRECTORY) != 0) {
+        printf("No se pudo renombrar '%s': es un directorio.\n", origen);
+        return;
+    }
+
+    atributos_destino = GetFileAttributesA(destino);
+
+    if (atributos_destino != INVALID_FILE_ATTRIBUTES) {
+        printf("No se pudo renombrar '%s' a '%s': el destino ya existe.\n", origen, destino);
+        return;
+    }
+
+    if (rename(origen, destino) != 0) {
+        printf("No se pudo renombrar el archivo '%s' a '%s': %s.\n", origen, destino, descripcion_error_operacion(errno));
+        return;
+    }
+
+    printf("Archivo renombrado: %s -> %s\n", origen, destino);
 }
 
 static void mostrar_directorio_actual(void) {
@@ -196,7 +318,7 @@ static void mostrar_directorio_actual(void) {
     printf("Directorio actual: %s\n", buffer);
 }
 
-static const char *descripcion_error_directorio(int codigo_error) {
+static const char *descripcion_error_operacion(int codigo_error) {
     switch (codigo_error) {
         case EEXIST:
             return "ya existe";

@@ -1,6 +1,6 @@
 AYUDA
-CREAR_DIR prueba
-CAMBIAR_DIR prueba
-CAMBIAR_DIR ..
-LISTAR
+MOSTRAR ejemplo.txt
+RENOMBRAR ejemplo.txt ejemplo2.txt
+MOSTRAR ejemplo2.txt
+ELIMINAR ejemplo2.txt
 SALIR
