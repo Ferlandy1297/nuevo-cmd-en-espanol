@@ -1,6 +1,8 @@
 AYUDA
 MOSTRAR ejemplo.txt
-RENOMBRAR ejemplo.txt ejemplo2.txt
-MOSTRAR ejemplo2.txt
-ELIMINAR ejemplo2.txt
+COPIAR ejemplo.txt copia.txt
+MOSTRAR copia.txt
+MOVER copia.txt movido.txt
+MOSTRAR movido.txt
+ELIMINAR movido.txt
 SALIR

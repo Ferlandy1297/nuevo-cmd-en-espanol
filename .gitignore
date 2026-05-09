@@ -26,4 +26,4 @@ build/*.o
 build/*.obj
 build/*.tab.c
 build/*.tab.h
-build/lex.yy.c
+build/lex.yy.cbuild/cmd_es_test_env/

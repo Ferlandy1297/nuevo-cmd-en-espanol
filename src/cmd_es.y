@@ -23,6 +23,8 @@ static void eliminar_directorio(const char *nombre);
 static void mostrar_archivo(const char *nombre);
 static void eliminar_archivo(const char *nombre);
 static void renombrar_archivo(const char *origen, const char *destino);
+static void copiar_archivo(const char *origen, const char *destino);
+static void mover_archivo(const char *origen, const char *destino);
 static void mostrar_directorio_actual(void);
 static const char *descripcion_error_operacion(int codigo_error);
 static int numero_linea_comando(void);
@@ -34,7 +36,7 @@ static void reiniciar_estado_linea(void);
 }
 
 %token AYUDA VERSION SALIR LIMPIAR FECHA HORA
-%token LISTAR CAMBIAR_DIR CREAR_DIR ELIMINAR_DIR MOSTRAR ELIMINAR RENOMBRAR
+%token LISTAR CAMBIAR_DIR CREAR_DIR ELIMINAR_DIR MOSTRAR ELIMINAR RENOMBRAR COPIAR MOVER
 %token PUNTO PUNTO_PUNTO
 %token NEWLINE
 %token <texto> NOMBRE
@@ -69,6 +71,8 @@ linea
     | MOSTRAR NOMBRE NEWLINE      { if (!cmd_es_linea_invalida) { mostrar_archivo($2); } free($2); reiniciar_estado_linea(); }
     | ELIMINAR NOMBRE NEWLINE     { if (!cmd_es_linea_invalida) { eliminar_archivo($2); } free($2); reiniciar_estado_linea(); }
     | RENOMBRAR NOMBRE NOMBRE NEWLINE { if (!cmd_es_linea_invalida) { renombrar_archivo($2, $3); } free($2); free($3); reiniciar_estado_linea(); }
+    | COPIAR NOMBRE NOMBRE NEWLINE { if (!cmd_es_linea_invalida) { copiar_archivo($2, $3); } free($2); free($3); reiniciar_estado_linea(); }
+    | MOVER NOMBRE NOMBRE NEWLINE { if (!cmd_es_linea_invalida) { mover_archivo($2, $3); } free($2); free($3); reiniciar_estado_linea(); }
     | CAMBIAR_DIR NEWLINE         { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): CAMBIAR_DIR requiere un nombre.\n", numero_linea_comando()); } reiniciar_estado_linea(); }
     | CREAR_DIR NEWLINE           { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): CREAR_DIR requiere un nombre.\n", numero_linea_comando()); } reiniciar_estado_linea(); }
     | ELIMINAR_DIR NEWLINE        { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): ELIMINAR_DIR requiere un nombre.\n", numero_linea_comando()); } reiniciar_estado_linea(); }
@@ -76,13 +80,17 @@ linea
     | ELIMINAR NEWLINE            { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): ELIMINAR requiere un nombre de archivo.\n", numero_linea_comando()); } reiniciar_estado_linea(); }
     | RENOMBRAR NEWLINE           { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): RENOMBRAR requiere un nombre de origen y otro de destino.\n", numero_linea_comando()); } reiniciar_estado_linea(); }
     | RENOMBRAR NOMBRE NEWLINE    { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): RENOMBRAR requiere un nombre de origen y otro de destino.\n", numero_linea_comando()); } free($2); reiniciar_estado_linea(); }
+    | COPIAR NEWLINE              { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): COPIAR requiere un nombre de origen y otro de destino.\n", numero_linea_comando()); } reiniciar_estado_linea(); }
+    | COPIAR NOMBRE NEWLINE       { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): COPIAR requiere un nombre de origen y otro de destino.\n", numero_linea_comando()); } free($2); reiniciar_estado_linea(); }
+    | MOVER NEWLINE               { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): MOVER requiere un nombre de origen y otro de destino.\n", numero_linea_comando()); } reiniciar_estado_linea(); }
+    | MOVER NOMBRE NEWLINE        { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): MOVER requiere un nombre de origen y otro de destino.\n", numero_linea_comando()); } free($2); reiniciar_estado_linea(); }
     | NEWLINE                     { reiniciar_estado_linea(); }
     | error NEWLINE               { reiniciar_estado_linea(); yyerrok; }   /* recuperacion por linea */
     ;
 %%
 
 static void mostrar_ayuda(void) {
-    printf("AYUDA: Comandos disponibles: AYUDA, VERSION, FECHA, HORA, LIMPIAR, LISTAR, CAMBIAR_DIR <nombre | . | ..>, CREAR_DIR <nombre>, ELIMINAR_DIR <nombre>, MOSTRAR <archivo>, ELIMINAR <archivo>, RENOMBRAR <origen> <destino>, SALIR\n");
+    printf("AYUDA: Comandos disponibles: AYUDA, VERSION, FECHA, HORA, LIMPIAR, LISTAR, CAMBIAR_DIR <nombre | . | ..>, CREAR_DIR <nombre>, ELIMINAR_DIR <nombre>, MOSTRAR <archivo>, ELIMINAR <archivo>, RENOMBRAR <origen> <destino>, COPIAR <origen> <destino>, MOVER <origen> <destino>, SALIR\n");
 }
 
 static void limpiar_pantalla_simple(void) {
@@ -305,6 +313,114 @@ static void renombrar_archivo(const char *origen, const char *destino) {
     }
 
     printf("Archivo renombrado: %s -> %s\n", origen, destino);
+}
+
+static void copiar_archivo(const char *origen, const char *destino) {
+    DWORD atributos_origen;
+    DWORD atributos_destino;
+    FILE *archivo_origen;
+    FILE *archivo_destino;
+    unsigned char buffer[4096];
+    size_t bytes_leidos;
+
+    atributos_origen = GetFileAttributesA(origen);
+
+    if (atributos_origen == INVALID_FILE_ATTRIBUTES) {
+        printf("No se pudo copiar '%s' a '%s': el origen no existe.\n", origen, destino);
+        return;
+    }
+
+    if ((atributos_origen & FILE_ATTRIBUTE_DIRECTORY) != 0) {
+        printf("No se pudo copiar '%s': es un directorio.\n", origen);
+        return;
+    }
+
+    atributos_destino = GetFileAttributesA(destino);
+
+    if (atributos_destino != INVALID_FILE_ATTRIBUTES) {
+        printf("No se pudo copiar '%s' a '%s': el destino ya existe.\n", origen, destino);
+        return;
+    }
+
+    archivo_origen = fopen(origen, "rb");
+
+    if (archivo_origen == NULL) {
+        printf("No se pudo abrir el archivo de origen '%s': %s.\n", origen, descripcion_error_operacion(errno));
+        return;
+    }
+
+    archivo_destino = fopen(destino, "wb");
+
+    if (archivo_destino == NULL) {
+        printf("No se pudo crear el archivo de destino '%s': %s.\n", destino, descripcion_error_operacion(errno));
+        fclose(archivo_origen);
+        return;
+    }
+
+    while ((bytes_leidos = fread(buffer, 1, sizeof(buffer), archivo_origen)) > 0) {
+        if (fwrite(buffer, 1, bytes_leidos, archivo_destino) != bytes_leidos) {
+            int codigo_error = errno;
+
+            printf("No se pudo escribir completamente el archivo '%s': %s.\n", destino, descripcion_error_operacion(codigo_error));
+            fclose(archivo_origen);
+            fclose(archivo_destino);
+            remove(destino);
+            return;
+        }
+    }
+
+    if (ferror(archivo_origen)) {
+        int codigo_error = errno;
+
+        printf("No se pudo leer completamente el archivo '%s': %s.\n", origen, descripcion_error_operacion(codigo_error));
+        fclose(archivo_origen);
+        fclose(archivo_destino);
+        remove(destino);
+        return;
+    }
+
+    fclose(archivo_origen);
+
+    if (fclose(archivo_destino) != 0) {
+        int codigo_error = errno;
+
+        printf("No se pudo finalizar la copia hacia '%s': %s.\n", destino, descripcion_error_operacion(codigo_error));
+        remove(destino);
+        return;
+    }
+
+    printf("Archivo copiado: %s -> %s\n", origen, destino);
+}
+
+static void mover_archivo(const char *origen, const char *destino) {
+    DWORD atributos_origen;
+    DWORD atributos_destino;
+
+    atributos_origen = GetFileAttributesA(origen);
+
+    if (atributos_origen == INVALID_FILE_ATTRIBUTES) {
+        printf("No se pudo mover '%s' a '%s': el origen no existe.\n", origen, destino);
+        return;
+    }
+
+    if ((atributos_origen & FILE_ATTRIBUTE_DIRECTORY) != 0) {
+        printf("No se pudo mover '%s': es un directorio.\n", origen);
+        return;
+    }
+
+    atributos_destino = GetFileAttributesA(destino);
+
+    if (atributos_destino != INVALID_FILE_ATTRIBUTES) {
+        printf("No se pudo mover '%s' a '%s': el destino ya existe.\n", origen, destino);
+        return;
+    }
+
+    if (MoveFileA(origen, destino) == 0) {
+        printf("No se pudo mover el archivo '%s' a '%s'.\n", origen, destino);
+        return;
+    }
+
+    printf("Archivo movido: %s -> %s\n", origen, destino);
 }
 
 static void mostrar_directorio_actual(void) {

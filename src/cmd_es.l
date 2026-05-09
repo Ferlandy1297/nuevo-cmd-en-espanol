@@ -28,6 +28,8 @@ ELIMINAR_DIR_K  [Ee][Ll][Ii][Mm][Ii][Nn][Aa][Rr]_[Dd][Ii][Rr]
 MOSTRAR_K       [Mm][Oo][Ss][Tt][Rr][Aa][Rr]
 ELIMINAR_K      [Ee][Ll][Ii][Mm][Ii][Nn][Aa][Rr]
 RENOMBRAR_K     [Rr][Ee][Nn][Oo][Mm][Bb][Rr][Aa][Rr]
+COPIAR_K        [Cc][Oo][Pp][Ii][Aa][Rr]
+MOVER_K         [Mm][Oo][Vv][Ee][Rr]
 PUNTO_PUNTO_K   \.\.
 PUNTO_K         \.
 NOMBRE_DIR      [A-Za-z0-9_][A-Za-z0-9_.-]*
@@ -47,6 +49,8 @@ NOMBRE_DIR      [A-Za-z0-9_][A-Za-z0-9_.-]*
 {MOSTRAR_K}         return MOSTRAR;
 {ELIMINAR_K}        return ELIMINAR;
 {RENOMBRAR_K}       return RENOMBRAR;
+{COPIAR_K}          return COPIAR;
+{MOVER_K}           return MOVER;
 {PUNTO_PUNTO_K}     return PUNTO_PUNTO;
 {PUNTO_K}           return PUNTO;
 {NOMBRE_DIR}        {
