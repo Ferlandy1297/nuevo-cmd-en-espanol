@@ -32,6 +32,7 @@ static void reiniciar_estado_linea(void);
 
 %token AYUDA VERSION SALIR LIMPIAR FECHA HORA
 %token LISTAR CAMBIAR_DIR CREAR_DIR ELIMINAR_DIR
+%token PUNTO PUNTO_PUNTO
 %token NEWLINE
 %token <texto> NOMBRE
 
@@ -58,6 +59,8 @@ linea
     | HORA NEWLINE                { if (!cmd_es_linea_invalida) { mostrar_hora_actual(); } reiniciar_estado_linea(); }
     | LISTAR NEWLINE              { if (!cmd_es_linea_invalida) { listar_directorios(); } reiniciar_estado_linea(); }
     | CAMBIAR_DIR NOMBRE NEWLINE  { if (!cmd_es_linea_invalida) { cambiar_directorio($2); } free($2); reiniciar_estado_linea(); }
+    | CAMBIAR_DIR PUNTO NEWLINE   { if (!cmd_es_linea_invalida) { cambiar_directorio("."); } reiniciar_estado_linea(); }
+    | CAMBIAR_DIR PUNTO_PUNTO NEWLINE { if (!cmd_es_linea_invalida) { cambiar_directorio(".."); } reiniciar_estado_linea(); }
     | CREAR_DIR NOMBRE NEWLINE    { if (!cmd_es_linea_invalida) { crear_directorio($2); } free($2); reiniciar_estado_linea(); }
     | ELIMINAR_DIR NOMBRE NEWLINE { if (!cmd_es_linea_invalida) { eliminar_directorio($2); } free($2); reiniciar_estado_linea(); }
     | CAMBIAR_DIR NEWLINE         { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): CAMBIAR_DIR requiere un nombre.\n", numero_linea_comando()); } reiniciar_estado_linea(); }
@@ -69,7 +72,7 @@ linea
 %%
 
 static void mostrar_ayuda(void) {
-    printf("AYUDA: Comandos disponibles: AYUDA, VERSION, FECHA, HORA, LIMPIAR, LISTAR, CAMBIAR_DIR <nombre>, CREAR_DIR <nombre>, ELIMINAR_DIR <nombre>, SALIR\n");
+    printf("AYUDA: Comandos disponibles: AYUDA, VERSION, FECHA, HORA, LIMPIAR, LISTAR, CAMBIAR_DIR <nombre | . | ..>, CREAR_DIR <nombre>, ELIMINAR_DIR <nombre>, SALIR\n");
 }
 
 static void limpiar_pantalla_simple(void) {

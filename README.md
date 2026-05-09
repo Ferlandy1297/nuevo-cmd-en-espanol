@@ -5,7 +5,7 @@ Proyecto academico para construir una nueva consola en espanol, inspirada en CMD
 Estado actual: Migracion a base Flex/Bison con ejecutable minimo y navegacion basica de directorios.
 
 ## Estructura del proyecto (Flex/Bison)
-- `src/cmd_es.l` - lexer con Flex/WinFlex (tokens: AYUDA, VERSION, SALIR, LIMPIAR, FECHA, HORA, LISTAR, CAMBIAR_DIR, CREAR_DIR, ELIMINAR_DIR, NOMBRE y NEWLINE; espacios/tabulaciones ignorados; otros se reportan como error lexico). El lexer es no sensible a mayusculas/minusculas.
+- `src/cmd_es.l` - lexer con Flex/WinFlex (tokens: AYUDA, VERSION, SALIR, LIMPIAR, FECHA, HORA, LISTAR, CAMBIAR_DIR, CREAR_DIR, ELIMINAR_DIR, PUNTO, PUNTO_PUNTO, NOMBRE y NEWLINE; espacios/tabulaciones ignorados; otros se reportan como error lexico). El lexer es no sensible a mayusculas/minusculas.
 - `src/cmd_es.y` - parser con Bison/WinBison (una instruccion por linea; acciones visibles; salida con SALIR; fecha y hora del sistema; navegacion basica de directorios). Incluye recuperacion por linea para errores sintacticos.
 - `ejemplos/` - archivos de prueba (por ej. `comandos.txt`).
 - `build/` - artefactos generados y ejecutable (`cmd-es.exe`).
@@ -54,7 +54,7 @@ type ejemplos\comandos.txt | build\cmd-es.exe
 - `HORA` muestra la hora actual del sistema.
 - `LIMPIAR` imprime varias lineas en blanco como limpieza simple compatible.
 - `LISTAR` muestra los subdirectorios del directorio actual.
-- `CAMBIAR_DIR <nombre>` cambia al directorio indicado si existe.
+- `CAMBIAR_DIR <nombre>`, `CAMBIAR_DIR .` y `CAMBIAR_DIR ..` cambian al directorio indicado y luego muestran la ruta actual.
 - `CREAR_DIR <nombre>` crea un directorio en la ubicacion actual.
 - `ELIMINAR_DIR <nombre>` elimina un directorio vacio.
 - `SALIR` termina la ejecucion.

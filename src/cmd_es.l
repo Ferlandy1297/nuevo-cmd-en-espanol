@@ -25,6 +25,8 @@ LISTAR_K        [Ll][Ii][Ss][Tt][Aa][Rr]
 CAMBIAR_DIR_K   [Cc][Aa][Mm][Bb][Ii][Aa][Rr]_[Dd][Ii][Rr]
 CREAR_DIR_K     [Cc][Rr][Ee][Aa][Rr]_[Dd][Ii][Rr]
 ELIMINAR_DIR_K  [Ee][Ll][Ii][Mm][Ii][Nn][Aa][Rr]_[Dd][Ii][Rr]
+PUNTO_PUNTO_K   \.\.
+PUNTO_K         \.
 NOMBRE_DIR      [A-Za-z0-9_][A-Za-z0-9_.-]*
 
 %%
@@ -39,6 +41,8 @@ NOMBRE_DIR      [A-Za-z0-9_][A-Za-z0-9_.-]*
 {CAMBIAR_DIR_K}     return CAMBIAR_DIR;
 {CREAR_DIR_K}       return CREAR_DIR;
 {ELIMINAR_DIR_K}    return ELIMINAR_DIR;
+{PUNTO_PUNTO_K}     return PUNTO_PUNTO;
+{PUNTO_K}           return PUNTO;
 {NOMBRE_DIR}        {
                         yylval.texto = duplicar_texto(yytext);
                         return NOMBRE;
