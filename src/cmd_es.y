@@ -24,6 +24,10 @@ static void pausar_consola(void);
 static void cambiar_titulo_consola(const char *texto);
 static void cambiar_color_consola(const char *codigo);
 static void mostrar_arbol_directorios(void);
+static void buscar_en_archivo(const char *texto, const char *archivo, int ignorar_mayusculas);
+static void mostrar_mas_simple(const char *archivo);
+static void ordenar_archivo(const char *archivo);
+static void comparar_archivos(const char *archivo1, const char *archivo2);
 static void cambiar_directorio(const char *nombre);
 static void crear_directorio(const char *nombre);
 static void eliminar_directorio(const char *nombre);
@@ -37,6 +41,12 @@ static void imprimir_sangria_arbol(int nivel);
 static int copiar_texto_recortado(const char *texto, char *destino, size_t tamanio);
 static int es_hexadecimal(char caracter);
 static int valor_hexadecimal(char caracter);
+static int abrir_archivo_simple(const char *nombre, const char *modo, FILE **archivo);
+static int linea_contiene_texto(const char *linea, const char *texto, int ignorar_mayusculas);
+static int contiene_texto_sin_mayusculas(const char *linea, const char *texto);
+static int comparar_lineas_alfabetico(const void *izquierda, const void *derecha);
+static char *duplicar_cadena_simple(const char *texto);
+static void liberar_lineas_archivo(char **lineas, size_t cantidad);
 static void mostrar_directorio_actual(void);
 static const char *descripcion_error_operacion(int codigo_error);
 static int numero_linea_comando(void);
@@ -48,7 +58,7 @@ static void reiniciar_estado_linea(void);
 }
 
 %token AYUDA VERSION SALIR LIMPIAR FECHA HORA
-%token LISTAR ECO PAUSA TITULO COLOR ARBOL CAMBIAR_DIR CREAR_DIR ELIMINAR_DIR MOSTRAR ELIMINAR RENOMBRAR COPIAR MOVER
+%token LISTAR ECO PAUSA TITULO COLOR ARBOL BUSCAR BUSCAR_TEXTO MAS ORDENAR COMPARAR CAMBIAR_DIR CREAR_DIR ELIMINAR_DIR MOSTRAR ELIMINAR RENOMBRAR COPIAR MOVER
 %token PUNTO PUNTO_PUNTO
 %token NEWLINE
 %token <texto> NOMBRE TEXTO
@@ -80,6 +90,11 @@ linea
     | TITULO TEXTO NEWLINE        { if (!cmd_es_linea_invalida) { cambiar_titulo_consola($2); } free($2); reiniciar_estado_linea(); }
     | COLOR TEXTO NEWLINE         { if (!cmd_es_linea_invalida) { cambiar_color_consola($2); } free($2); reiniciar_estado_linea(); }
     | ARBOL NEWLINE               { if (!cmd_es_linea_invalida) { mostrar_arbol_directorios(); } reiniciar_estado_linea(); }
+    | BUSCAR NOMBRE NOMBRE NEWLINE { if (!cmd_es_linea_invalida) { buscar_en_archivo($2, $3, 0); } free($2); free($3); reiniciar_estado_linea(); }
+    | BUSCAR_TEXTO NOMBRE NOMBRE NEWLINE { if (!cmd_es_linea_invalida) { buscar_en_archivo($2, $3, 1); } free($2); free($3); reiniciar_estado_linea(); }
+    | MAS NOMBRE NEWLINE          { if (!cmd_es_linea_invalida) { mostrar_mas_simple($2); } free($2); reiniciar_estado_linea(); }
+    | ORDENAR NOMBRE NEWLINE      { if (!cmd_es_linea_invalida) { ordenar_archivo($2); } free($2); reiniciar_estado_linea(); }
+    | COMPARAR NOMBRE NOMBRE NEWLINE { if (!cmd_es_linea_invalida) { comparar_archivos($2, $3); } free($2); free($3); reiniciar_estado_linea(); }
     | CAMBIAR_DIR NOMBRE NEWLINE  { if (!cmd_es_linea_invalida) { cambiar_directorio($2); } free($2); reiniciar_estado_linea(); }
     | CAMBIAR_DIR PUNTO NEWLINE   { if (!cmd_es_linea_invalida) { cambiar_directorio("."); } reiniciar_estado_linea(); }
     | CAMBIAR_DIR PUNTO_PUNTO NEWLINE { if (!cmd_es_linea_invalida) { cambiar_directorio(".."); } reiniciar_estado_linea(); }
@@ -93,6 +108,14 @@ linea
     | ECO NEWLINE                 { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): ECO requiere un texto.\n", numero_linea_comando()); } reiniciar_estado_linea(); }
     | TITULO NEWLINE              { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): TITULO requiere un texto.\n", numero_linea_comando()); } reiniciar_estado_linea(); }
     | COLOR NEWLINE               { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): COLOR requiere un codigo.\n", numero_linea_comando()); } reiniciar_estado_linea(); }
+    | BUSCAR NEWLINE              { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): BUSCAR requiere un texto y un archivo.\n", numero_linea_comando()); } reiniciar_estado_linea(); }
+    | BUSCAR NOMBRE NEWLINE       { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): BUSCAR requiere un texto y un archivo.\n", numero_linea_comando()); } free($2); reiniciar_estado_linea(); }
+    | BUSCAR_TEXTO NEWLINE        { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): BUSCAR_TEXTO requiere un texto y un archivo.\n", numero_linea_comando()); } reiniciar_estado_linea(); }
+    | BUSCAR_TEXTO NOMBRE NEWLINE { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): BUSCAR_TEXTO requiere un texto y un archivo.\n", numero_linea_comando()); } free($2); reiniciar_estado_linea(); }
+    | MAS NEWLINE                 { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): MAS requiere un archivo.\n", numero_linea_comando()); } reiniciar_estado_linea(); }
+    | ORDENAR NEWLINE             { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): ORDENAR requiere un archivo.\n", numero_linea_comando()); } reiniciar_estado_linea(); }
+    | COMPARAR NEWLINE            { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): COMPARAR requiere dos archivos.\n", numero_linea_comando()); } reiniciar_estado_linea(); }
+    | COMPARAR NOMBRE NEWLINE     { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): COMPARAR requiere dos archivos.\n", numero_linea_comando()); } free($2); reiniciar_estado_linea(); }
     | CAMBIAR_DIR NEWLINE         { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): CAMBIAR_DIR requiere un nombre.\n", numero_linea_comando()); } reiniciar_estado_linea(); }
     | CREAR_DIR NEWLINE           { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): CREAR_DIR requiere un nombre.\n", numero_linea_comando()); } reiniciar_estado_linea(); }
     | ELIMINAR_DIR NEWLINE        { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): ELIMINAR_DIR requiere un nombre.\n", numero_linea_comando()); } reiniciar_estado_linea(); }
@@ -110,7 +133,7 @@ linea
 %%
 
 static void mostrar_ayuda(void) {
-    printf("AYUDA: Comandos disponibles: AYUDA, VERSION, FECHA, HORA, LIMPIAR, LISTAR, ECO <texto>, PAUSA, TITULO <texto>, COLOR <codigo>, ARBOL, CAMBIAR_DIR <nombre | . | ..>, CREAR_DIR <nombre>, ELIMINAR_DIR <nombre>, MOSTRAR <archivo>, ELIMINAR <archivo>, RENOMBRAR <origen> <destino>, COPIAR <origen> <destino>, MOVER <origen> <destino>, SALIR\n");
+    printf("AYUDA: Comandos disponibles: AYUDA, VERSION, FECHA, HORA, LIMPIAR, LISTAR, ECO <texto>, PAUSA, TITULO <texto>, COLOR <codigo>, ARBOL, BUSCAR <texto> <archivo>, BUSCAR_TEXTO <texto> <archivo>, MAS <archivo>, ORDENAR <archivo>, COMPARAR <archivo1> <archivo2>, CAMBIAR_DIR <nombre | . | ..>, CREAR_DIR <nombre>, ELIMINAR_DIR <nombre>, MOSTRAR <archivo>, ELIMINAR <archivo>, RENOMBRAR <origen> <destino>, COPIAR <origen> <destino>, MOVER <origen> <destino>, SALIR\n");
 }
 
 static void limpiar_pantalla_simple(void) {
@@ -289,6 +312,187 @@ static void mostrar_arbol_directorios(void) {
 
     if (!hay_subdirectorios) {
         printf("No hay subdirectorios en el directorio actual.\n");
+    }
+}
+
+static void buscar_en_archivo(const char *texto, const char *archivo, int ignorar_mayusculas) {
+    FILE *manejador;
+    char buffer[1024];
+    int encontro;
+    int numero_linea;
+
+    if (!abrir_archivo_simple(archivo, "r", &manejador)) {
+        return;
+    }
+
+    encontro = 0;
+    numero_linea = 0;
+
+    while (fgets(buffer, sizeof(buffer), manejador) != NULL) {
+        size_t longitud;
+
+        ++numero_linea;
+
+        if (!linea_contiene_texto(buffer, texto, ignorar_mayusculas)) {
+            continue;
+        }
+
+        longitud = strlen(buffer);
+        printf("Linea %d: %s", numero_linea, buffer);
+
+        if (longitud == 0 || buffer[longitud - 1] != '\n') {
+            putchar('\n');
+        }
+
+        encontro = 1;
+    }
+
+    if (ferror(manejador)) {
+        printf("No se pudo leer completamente el archivo '%s'.\n", archivo);
+        fclose(manejador);
+        return;
+    }
+
+    fclose(manejador);
+
+    if (!encontro) {
+        printf("No se encontraron coincidencias para '%s' en '%s'.\n", texto, archivo);
+    }
+}
+
+static void mostrar_mas_simple(const char *archivo) {
+    printf("MAS simple: mostrando contenido completo de '%s'.\n", archivo);
+    mostrar_archivo(archivo);
+}
+
+static void ordenar_archivo(const char *archivo) {
+    FILE *manejador;
+    char **lineas;
+    char buffer[1024];
+    size_t cantidad;
+    size_t capacidad;
+
+    if (!abrir_archivo_simple(archivo, "r", &manejador)) {
+        return;
+    }
+
+    lineas = NULL;
+    cantidad = 0;
+    capacidad = 0;
+
+    while (fgets(buffer, sizeof(buffer), manejador) != NULL) {
+        if (cantidad == capacidad) {
+            char **nuevas_lineas;
+            size_t nueva_capacidad;
+
+            nueva_capacidad = (capacidad == 0) ? 8 : capacidad * 2;
+            nuevas_lineas = (char **)realloc(lineas, nueva_capacidad * sizeof(char *));
+
+            if (nuevas_lineas == NULL) {
+                printf("Error: memoria insuficiente.\n");
+                liberar_lineas_archivo(lineas, cantidad);
+                fclose(manejador);
+                return;
+            }
+
+            lineas = nuevas_lineas;
+            capacidad = nueva_capacidad;
+        }
+
+        lineas[cantidad] = duplicar_cadena_simple(buffer);
+        ++cantidad;
+    }
+
+    if (ferror(manejador)) {
+        printf("No se pudo leer completamente el archivo '%s'.\n", archivo);
+        liberar_lineas_archivo(lineas, cantidad);
+        fclose(manejador);
+        return;
+    }
+
+    fclose(manejador);
+
+    if (cantidad == 0) {
+        printf("Archivo vacio.\n");
+        free(lineas);
+        return;
+    }
+
+    qsort(lineas, cantidad, sizeof(char *), comparar_lineas_alfabetico);
+    printf("Contenido ordenado de '%s':\n", archivo);
+
+    {
+        size_t i;
+
+        for (i = 0; i < cantidad; ++i) {
+            size_t longitud;
+
+            longitud = strlen(lineas[i]);
+            printf("%s", lineas[i]);
+
+            if (longitud == 0 || lineas[i][longitud - 1] != '\n') {
+                putchar('\n');
+            }
+        }
+    }
+
+    liberar_lineas_archivo(lineas, cantidad);
+}
+
+static void comparar_archivos(const char *archivo1, const char *archivo2) {
+    FILE *manejador1;
+    FILE *manejador2;
+    unsigned char buffer1[4096];
+    unsigned char buffer2[4096];
+    int son_iguales;
+
+    if (!abrir_archivo_simple(archivo1, "rb", &manejador1)) {
+        return;
+    }
+
+    if (!abrir_archivo_simple(archivo2, "rb", &manejador2)) {
+        fclose(manejador1);
+        return;
+    }
+
+    son_iguales = 1;
+
+    for (;;) {
+        size_t leidos1;
+        size_t leidos2;
+
+        leidos1 = fread(buffer1, 1, sizeof(buffer1), manejador1);
+        leidos2 = fread(buffer2, 1, sizeof(buffer2), manejador2);
+
+        if (leidos1 != leidos2) {
+            son_iguales = 0;
+            break;
+        }
+
+        if (leidos1 == 0) {
+            break;
+        }
+
+        if (memcmp(buffer1, buffer2, leidos1) != 0) {
+            son_iguales = 0;
+            break;
+        }
+    }
+
+    if (ferror(manejador1) || ferror(manejador2)) {
+        printf("No se pudieron comparar completamente los archivos '%s' y '%s'.\n", archivo1, archivo2);
+        fclose(manejador1);
+        fclose(manejador2);
+        return;
+    }
+
+    fclose(manejador1);
+    fclose(manejador2);
+
+    if (son_iguales) {
+        printf("Los archivos '%s' y '%s' son iguales.\n", archivo1, archivo2);
+    } else {
+        printf("Los archivos '%s' y '%s' son diferentes.\n", archivo1, archivo2);
     }
 }
 
@@ -665,6 +869,106 @@ static int valor_hexadecimal(char caracter) {
 
     caracter = (char)toupper((unsigned char)caracter);
     return caracter - 'A' + 10;
+}
+
+static int abrir_archivo_simple(const char *nombre, const char *modo, FILE **archivo) {
+    DWORD atributos;
+
+    *archivo = NULL;
+    atributos = GetFileAttributesA(nombre);
+
+    if (atributos == INVALID_FILE_ATTRIBUTES) {
+        printf("No se pudo abrir el archivo '%s': no existe.\n", nombre);
+        return 0;
+    }
+
+    if ((atributos & FILE_ATTRIBUTE_DIRECTORY) != 0) {
+        printf("No se pudo abrir '%s': es un directorio.\n", nombre);
+        return 0;
+    }
+
+    *archivo = fopen(nombre, modo);
+
+    if (*archivo == NULL) {
+        printf("No se pudo abrir el archivo '%s': %s.\n", nombre, descripcion_error_operacion(errno));
+        return 0;
+    }
+
+    return 1;
+}
+
+static int linea_contiene_texto(const char *linea, const char *texto, int ignorar_mayusculas) {
+    if (ignorar_mayusculas) {
+        return contiene_texto_sin_mayusculas(linea, texto);
+    }
+
+    return strstr(linea, texto) != NULL;
+}
+
+static int contiene_texto_sin_mayusculas(const char *linea, const char *texto) {
+    const char *inicio_linea;
+    size_t longitud_texto;
+
+    longitud_texto = strlen(texto);
+
+    if (longitud_texto == 0) {
+        return 1;
+    }
+
+    for (inicio_linea = linea; *inicio_linea != '\0'; ++inicio_linea) {
+        size_t i;
+
+        for (i = 0; i < longitud_texto; ++i) {
+            if (inicio_linea[i] == '\0') {
+                return 0;
+            }
+
+            if (tolower((unsigned char)inicio_linea[i]) != tolower((unsigned char)texto[i])) {
+                break;
+            }
+        }
+
+        if (i == longitud_texto) {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+static int comparar_lineas_alfabetico(const void *izquierda, const void *derecha) {
+    const char *linea_izquierda;
+    const char *linea_derecha;
+
+    linea_izquierda = *(const char * const *)izquierda;
+    linea_derecha = *(const char * const *)derecha;
+    return strcmp(linea_izquierda, linea_derecha);
+}
+
+static char *duplicar_cadena_simple(const char *texto) {
+    size_t longitud;
+    char *copia;
+
+    longitud = strlen(texto) + 1;
+    copia = (char *)malloc(longitud);
+
+    if (copia == NULL) {
+        printf("Error: memoria insuficiente.\n");
+        exit(1);
+    }
+
+    memcpy(copia, texto, longitud);
+    return copia;
+}
+
+static void liberar_lineas_archivo(char **lineas, size_t cantidad) {
+    size_t i;
+
+    for (i = 0; i < cantidad; ++i) {
+        free(lineas[i]);
+    }
+
+    free(lineas);
 }
 
 static void mostrar_directorio_actual(void) {

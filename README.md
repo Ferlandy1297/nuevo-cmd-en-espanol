@@ -2,11 +2,11 @@
 
 Proyecto academico para construir una nueva consola en espanol, inspirada en CMD de Windows. El objetivo es ofrecer comandos nativos en espanol y una experiencia clara para el curso de Compiladores.
 
-Estado actual: Migracion a base Flex/Bison con ejecutable minimo, navegacion basica de directorios, manejo basico de archivos, copia y movimiento simples, y una fase inicial de presentacion/interaccion tipo CMD.
+Estado actual: Migracion a base Flex/Bison con ejecutable minimo, navegacion basica de directorios, manejo basico de archivos, copia y movimiento simples, una fase inicial de presentacion/interaccion tipo CMD y una fase simple de consulta/procesamiento de texto.
 
 ## Estructura del proyecto (Flex/Bison)
-- `src/cmd_es.l` - lexer con Flex/WinFlex (tokens: AYUDA, VERSION, SALIR, LIMPIAR, FECHA, HORA, LISTAR, ECO, PAUSA, TITULO, COLOR, ARBOL, CAMBIAR_DIR, CREAR_DIR, ELIMINAR_DIR, MOSTRAR, ELIMINAR, RENOMBRAR, COPIAR, MOVER, PUNTO, PUNTO_PUNTO, NOMBRE, TEXTO y NEWLINE; espacios/tabulaciones ignorados; otros se reportan como error lexico). El lexer es no sensible a mayusculas/minusculas.
-- `src/cmd_es.y` - parser con Bison/WinBison (una instruccion por linea; acciones visibles; salida con SALIR; fecha y hora del sistema; presentacion basica de consola; navegacion basica de directorios y manejo basico de archivos, incluyendo copia y movimiento simples). Incluye recuperacion por linea para errores sintacticos.
+- `src/cmd_es.l` - lexer con Flex/WinFlex (tokens: AYUDA, VERSION, SALIR, LIMPIAR, FECHA, HORA, LISTAR, ECO, PAUSA, TITULO, COLOR, ARBOL, BUSCAR, BUSCAR_TEXTO, MAS, ORDENAR, COMPARAR, CAMBIAR_DIR, CREAR_DIR, ELIMINAR_DIR, MOSTRAR, ELIMINAR, RENOMBRAR, COPIAR, MOVER, PUNTO, PUNTO_PUNTO, NOMBRE, TEXTO y NEWLINE; espacios/tabulaciones ignorados; otros se reportan como error lexico). El lexer es no sensible a mayusculas/minusculas.
+- `src/cmd_es.y` - parser con Bison/WinBison (una instruccion por linea; acciones visibles; salida con SALIR; fecha y hora del sistema; presentacion basica de consola; navegacion basica de directorios; manejo basico de archivos; y consulta/procesamiento simple de texto). Incluye recuperacion por linea para errores sintacticos.
 - `ejemplos/` - archivos de prueba (por ej. `comandos.txt`).
 - `build/` - artefactos generados y ejecutable (`cmd-es.exe`).
 - `legacy/` - intento previo en Python preservado (no se usa ahora).
@@ -59,6 +59,11 @@ type ejemplos\comandos.txt | build\cmd-es.exe
 - `TITULO <texto>` cambia el titulo de la consola.
 - `COLOR <codigo>` aplica un codigo hexadecimal simple de dos caracteres al estilo CMD.
 - `ARBOL` muestra la estructura basica de subdirectorios del directorio actual.
+- `BUSCAR <texto> <archivo>` muestra las lineas del archivo que contienen el texto indicado.
+- `BUSCAR_TEXTO <texto> <archivo>` realiza una busqueda simple separada para futuras mejoras.
+- `MAS <archivo>` muestra el contenido completo del archivo con un encabezado simple.
+- `ORDENAR <archivo>` lee el archivo, ordena sus lineas alfabeticamente y muestra el resultado.
+- `COMPARAR <archivo1> <archivo2>` indica si ambos archivos son iguales o diferentes.
 - `CAMBIAR_DIR <nombre>`, `CAMBIAR_DIR .` y `CAMBIAR_DIR ..` cambian al directorio indicado y luego muestran la ruta actual.
 - `CREAR_DIR <nombre>` crea un directorio en la ubicacion actual.
 - `ELIMINAR_DIR <nombre>` elimina un directorio vacio.

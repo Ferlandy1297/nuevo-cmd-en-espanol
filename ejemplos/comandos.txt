@@ -1,7 +1,7 @@
 AYUDA
-ECO Hola desde el nuevo CMD en espanol
-TITULO Demo CMD Espanol
-COLOR 0A
-ARBOL
-PAUSA
+BUSCAR hola ejemplo.txt
+BUSCAR_TEXTO mundo ejemplo.txt
+MAS ejemplo.txt
+ORDENAR ejemplo.txt
+COMPARAR ejemplo.txt ejemplo2.txt
 SALIR
