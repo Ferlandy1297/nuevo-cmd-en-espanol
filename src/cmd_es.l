@@ -34,6 +34,9 @@ BUSCAR_TEXTO_K  [Bb][Uu][Ss][Cc][Aa][Rr]_[Tt][Ee][Xx][Tt][Oo]
 MAS_K           [Mm][Aa][Ss]
 ORDENAR_K       [Oo][Rr][Dd][Ee][Nn][Aa][Rr]
 COMPARAR_K      [Cc][Oo][Mm][Pp][Aa][Rr][Aa][Rr]
+SIMBOLO_K       [Ss][Ii][Mm][Bb][Oo][Ll][Oo]
+RUTA_K          [Rr][Uu][Tt][Aa]
+DEFINIR_K       [Dd][Ee][Ff][Ii][Nn][Ii][Rr]
 CAMBIAR_DIR_K   [Cc][Aa][Mm][Bb][Ii][Aa][Rr]_[Dd][Ii][Rr]
 CREAR_DIR_K     [Cc][Rr][Ee][Aa][Rr]_[Dd][Ii][Rr]
 ELIMINAR_DIR_K  [Ee][Ll][Ii][Mm][Ii][Nn][Aa][Rr]_[Dd][Ii][Rr]
@@ -65,6 +68,9 @@ NOMBRE_DIR      [A-Za-z0-9_][A-Za-z0-9_.-]*
 <INITIAL>{MAS_K}             return MAS;
 <INITIAL>{ORDENAR_K}         return ORDENAR;
 <INITIAL>{COMPARAR_K}        return COMPARAR;
+<INITIAL>{SIMBOLO_K}         { BEGIN(ESTADO_TEXTO); return SIMBOLO; }
+<INITIAL>{RUTA_K}            { BEGIN(ESTADO_TEXTO); return RUTA; }
+<INITIAL>{DEFINIR_K}         { BEGIN(ESTADO_TEXTO); return DEFINIR; }
 <INITIAL>{CAMBIAR_DIR_K}     return CAMBIAR_DIR;
 <INITIAL>{CREAR_DIR_K}       return CREAR_DIR;
 <INITIAL>{ELIMINAR_DIR_K}    return ELIMINAR_DIR;

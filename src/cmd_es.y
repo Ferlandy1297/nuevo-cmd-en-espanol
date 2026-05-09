@@ -14,7 +14,24 @@ void yyerror(const char *s);
 extern int yylineno;
 int cmd_es_linea_invalida;
 
+#define CMD_ES_MAX_VARIABLES 32
+#define CMD_ES_MAX_NOMBRE_VARIABLE 64
+#define CMD_ES_MAX_VALOR_VARIABLE 256
+#define CMD_ES_MAX_TEXTO_INTERNO MAX_PATH
+
+typedef struct {
+    int en_uso;
+    char nombre[CMD_ES_MAX_NOMBRE_VARIABLE];
+    char valor[CMD_ES_MAX_VALOR_VARIABLE];
+} CmdEsVariableInterna;
+
+static char cmd_es_simbolo_actual[CMD_ES_MAX_TEXTO_INTERNO] = "CMD-ES>";
+static char cmd_es_ruta_actual[CMD_ES_MAX_TEXTO_INTERNO];
+static int cmd_es_ruta_inicializada;
+static CmdEsVariableInterna cmd_es_variables[CMD_ES_MAX_VARIABLES];
+
 static void mostrar_ayuda(void);
+static void inicializar_entorno_interno(void);
 static void limpiar_pantalla_simple(void);
 static void mostrar_fecha_actual(void);
 static void mostrar_hora_actual(void);
@@ -24,6 +41,13 @@ static void pausar_consola(void);
 static void cambiar_titulo_consola(const char *texto);
 static void cambiar_color_consola(const char *codigo);
 static void mostrar_arbol_directorios(void);
+static void cambiar_simbolo_interno(const char *texto);
+static void mostrar_ruta_interna(void);
+static void cambiar_ruta_interna(const char *texto);
+static void manejar_definir(const char *texto);
+static void mostrar_variables_internas(void);
+static void mostrar_variable_interna(const char *nombre);
+static void asignar_variable_interna(const char *texto);
 static void buscar_en_archivo(const char *texto, const char *archivo, int ignorar_mayusculas);
 static void mostrar_mas_simple(const char *archivo);
 static void ordenar_archivo(const char *archivo);
@@ -45,6 +69,10 @@ static int abrir_archivo_simple(const char *nombre, const char *modo, FILE **arc
 static int linea_contiene_texto(const char *linea, const char *texto, int ignorar_mayusculas);
 static int contiene_texto_sin_mayusculas(const char *linea, const char *texto);
 static int comparar_lineas_alfabetico(const void *izquierda, const void *derecha);
+static int copiar_segmento_recortado(const char *inicio, const char *fin, char *destino, size_t tamanio);
+static int guardar_texto_limitado(const char *origen, char *destino, size_t tamanio);
+static int buscar_indice_variable(const char *nombre);
+static int nombre_variable_valido(const char *nombre);
 static char *duplicar_cadena_simple(const char *texto);
 static void liberar_lineas_archivo(char **lineas, size_t cantidad);
 static void mostrar_directorio_actual(void);
@@ -58,7 +86,7 @@ static void reiniciar_estado_linea(void);
 }
 
 %token AYUDA VERSION SALIR LIMPIAR FECHA HORA
-%token LISTAR ECO PAUSA TITULO COLOR ARBOL BUSCAR BUSCAR_TEXTO MAS ORDENAR COMPARAR CAMBIAR_DIR CREAR_DIR ELIMINAR_DIR MOSTRAR ELIMINAR RENOMBRAR COPIAR MOVER
+%token LISTAR ECO PAUSA TITULO COLOR ARBOL BUSCAR BUSCAR_TEXTO MAS ORDENAR COMPARAR SIMBOLO RUTA DEFINIR CAMBIAR_DIR CREAR_DIR ELIMINAR_DIR MOSTRAR ELIMINAR RENOMBRAR COPIAR MOVER
 %token PUNTO PUNTO_PUNTO
 %token NEWLINE
 %token <texto> NOMBRE TEXTO
@@ -90,6 +118,11 @@ linea
     | TITULO TEXTO NEWLINE        { if (!cmd_es_linea_invalida) { cambiar_titulo_consola($2); } free($2); reiniciar_estado_linea(); }
     | COLOR TEXTO NEWLINE         { if (!cmd_es_linea_invalida) { cambiar_color_consola($2); } free($2); reiniciar_estado_linea(); }
     | ARBOL NEWLINE               { if (!cmd_es_linea_invalida) { mostrar_arbol_directorios(); } reiniciar_estado_linea(); }
+    | SIMBOLO TEXTO NEWLINE       { if (!cmd_es_linea_invalida) { cambiar_simbolo_interno($2); } free($2); reiniciar_estado_linea(); }
+    | RUTA NEWLINE                { if (!cmd_es_linea_invalida) { mostrar_ruta_interna(); } reiniciar_estado_linea(); }
+    | RUTA TEXTO NEWLINE          { if (!cmd_es_linea_invalida) { cambiar_ruta_interna($2); } free($2); reiniciar_estado_linea(); }
+    | DEFINIR NEWLINE             { if (!cmd_es_linea_invalida) { mostrar_variables_internas(); } reiniciar_estado_linea(); }
+    | DEFINIR TEXTO NEWLINE       { if (!cmd_es_linea_invalida) { manejar_definir($2); } free($2); reiniciar_estado_linea(); }
     | BUSCAR NOMBRE NOMBRE NEWLINE { if (!cmd_es_linea_invalida) { buscar_en_archivo($2, $3, 0); } free($2); free($3); reiniciar_estado_linea(); }
     | BUSCAR_TEXTO NOMBRE NOMBRE NEWLINE { if (!cmd_es_linea_invalida) { buscar_en_archivo($2, $3, 1); } free($2); free($3); reiniciar_estado_linea(); }
     | MAS NOMBRE NEWLINE          { if (!cmd_es_linea_invalida) { mostrar_mas_simple($2); } free($2); reiniciar_estado_linea(); }
@@ -108,6 +141,7 @@ linea
     | ECO NEWLINE                 { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): ECO requiere un texto.\n", numero_linea_comando()); } reiniciar_estado_linea(); }
     | TITULO NEWLINE              { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): TITULO requiere un texto.\n", numero_linea_comando()); } reiniciar_estado_linea(); }
     | COLOR NEWLINE               { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): COLOR requiere un codigo.\n", numero_linea_comando()); } reiniciar_estado_linea(); }
+    | SIMBOLO NEWLINE             { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): SIMBOLO requiere un texto.\n", numero_linea_comando()); } reiniciar_estado_linea(); }
     | BUSCAR NEWLINE              { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): BUSCAR requiere un texto y un archivo.\n", numero_linea_comando()); } reiniciar_estado_linea(); }
     | BUSCAR NOMBRE NEWLINE       { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): BUSCAR requiere un texto y un archivo.\n", numero_linea_comando()); } free($2); reiniciar_estado_linea(); }
     | BUSCAR_TEXTO NEWLINE        { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): BUSCAR_TEXTO requiere un texto y un archivo.\n", numero_linea_comando()); } reiniciar_estado_linea(); }
@@ -133,7 +167,19 @@ linea
 %%
 
 static void mostrar_ayuda(void) {
-    printf("AYUDA: Comandos disponibles: AYUDA, VERSION, FECHA, HORA, LIMPIAR, LISTAR, ECO <texto>, PAUSA, TITULO <texto>, COLOR <codigo>, ARBOL, BUSCAR <texto> <archivo>, BUSCAR_TEXTO <texto> <archivo>, MAS <archivo>, ORDENAR <archivo>, COMPARAR <archivo1> <archivo2>, CAMBIAR_DIR <nombre | . | ..>, CREAR_DIR <nombre>, ELIMINAR_DIR <nombre>, MOSTRAR <archivo>, ELIMINAR <archivo>, RENOMBRAR <origen> <destino>, COPIAR <origen> <destino>, MOVER <origen> <destino>, SALIR\n");
+    printf("AYUDA: Comandos disponibles: AYUDA, VERSION, FECHA, HORA, LIMPIAR, LISTAR, ECO <texto>, PAUSA, TITULO <texto>, COLOR <codigo>, ARBOL, BUSCAR <texto> <archivo>, BUSCAR_TEXTO <texto> <archivo>, MAS <archivo>, ORDENAR <archivo>, COMPARAR <archivo1> <archivo2>, SIMBOLO <texto>, RUTA [texto], DEFINIR [nombre | nombre=valor], CAMBIAR_DIR <nombre | . | ..>, CREAR_DIR <nombre>, ELIMINAR_DIR <nombre>, MOSTRAR <archivo>, ELIMINAR <archivo>, RENOMBRAR <origen> <destino>, COPIAR <origen> <destino>, MOVER <origen> <destino>, SALIR\n");
+}
+
+static void inicializar_entorno_interno(void) {
+    if (cmd_es_ruta_inicializada) {
+        return;
+    }
+
+    if (_getcwd(cmd_es_ruta_actual, sizeof(cmd_es_ruta_actual)) == NULL) {
+        strcpy(cmd_es_ruta_actual, ".");
+    }
+
+    cmd_es_ruta_inicializada = 1;
 }
 
 static void limpiar_pantalla_simple(void) {
@@ -313,6 +359,162 @@ static void mostrar_arbol_directorios(void) {
     if (!hay_subdirectorios) {
         printf("No hay subdirectorios en el directorio actual.\n");
     }
+}
+
+static void cambiar_simbolo_interno(const char *texto) {
+    char simbolo[CMD_ES_MAX_TEXTO_INTERNO];
+
+    if (!copiar_texto_recortado(texto, simbolo, sizeof(simbolo)) || simbolo[0] == '\0') {
+        printf("No se pudo actualizar el simbolo interno.\n");
+        return;
+    }
+
+    if (!guardar_texto_limitado(simbolo, cmd_es_simbolo_actual, sizeof(cmd_es_simbolo_actual))) {
+        printf("No se pudo actualizar el simbolo interno.\n");
+        return;
+    }
+
+    printf("Simbolo interno actualizado: %s\n", cmd_es_simbolo_actual);
+}
+
+static void mostrar_ruta_interna(void) {
+    inicializar_entorno_interno();
+    printf("Ruta interna actual: %s\n", cmd_es_ruta_actual);
+}
+
+static void cambiar_ruta_interna(const char *texto) {
+    char ruta[CMD_ES_MAX_TEXTO_INTERNO];
+
+    if (!copiar_texto_recortado(texto, ruta, sizeof(ruta)) || ruta[0] == '\0') {
+        printf("No se pudo actualizar la ruta interna.\n");
+        return;
+    }
+
+    if (!guardar_texto_limitado(ruta, cmd_es_ruta_actual, sizeof(cmd_es_ruta_actual))) {
+        printf("No se pudo actualizar la ruta interna.\n");
+        return;
+    }
+
+    cmd_es_ruta_inicializada = 1;
+    printf("Ruta interna actualizada: %s\n", cmd_es_ruta_actual);
+}
+
+static void manejar_definir(const char *texto) {
+    char expresion[CMD_ES_MAX_TEXTO_INTERNO];
+
+    if (!copiar_texto_recortado(texto, expresion, sizeof(expresion)) || expresion[0] == '\0') {
+        mostrar_variables_internas();
+        return;
+    }
+
+    if (strchr(expresion, '=') != NULL) {
+        asignar_variable_interna(expresion);
+    } else {
+        mostrar_variable_interna(expresion);
+    }
+}
+
+static void mostrar_variables_internas(void) {
+    int i;
+    int hay_variables;
+
+    hay_variables = 0;
+
+    for (i = 0; i < CMD_ES_MAX_VARIABLES; ++i) {
+        if (!cmd_es_variables[i].en_uso) {
+            continue;
+        }
+
+        if (!hay_variables) {
+            printf("Variables internas definidas:\n");
+            hay_variables = 1;
+        }
+
+        printf("%s = %s\n", cmd_es_variables[i].nombre, cmd_es_variables[i].valor);
+    }
+
+    if (!hay_variables) {
+        printf("No hay variables internas definidas.\n");
+    }
+}
+
+static void mostrar_variable_interna(const char *nombre) {
+    char nombre_limpio[CMD_ES_MAX_NOMBRE_VARIABLE];
+    int indice;
+
+    if (!copiar_texto_recortado(nombre, nombre_limpio, sizeof(nombre_limpio)) || nombre_limpio[0] == '\0') {
+        printf("Nombre de variable invalido.\n");
+        return;
+    }
+
+    if (!nombre_variable_valido(nombre_limpio)) {
+        printf("Nombre de variable invalido: %s\n", nombre_limpio);
+        return;
+    }
+
+    indice = buscar_indice_variable(nombre_limpio);
+
+    if (indice < 0) {
+        printf("Variable no definida: %s\n", nombre_limpio);
+        return;
+    }
+
+    printf("%s = %s\n", cmd_es_variables[indice].nombre, cmd_es_variables[indice].valor);
+}
+
+static void asignar_variable_interna(const char *texto) {
+    const char *igual;
+    char nombre[CMD_ES_MAX_NOMBRE_VARIABLE];
+    char valor[CMD_ES_MAX_VALOR_VARIABLE];
+    int indice;
+    int i;
+
+    igual = strchr(texto, '=');
+
+    if (igual == NULL) {
+        printf("Expresion de DEFINIR invalida.\n");
+        return;
+    }
+
+    if (!copiar_segmento_recortado(texto, igual, nombre, sizeof(nombre)) || nombre[0] == '\0') {
+        printf("Nombre de variable invalido.\n");
+        return;
+    }
+
+    if (!copiar_segmento_recortado(igual + 1, texto + strlen(texto), valor, sizeof(valor))) {
+        printf("Valor de variable demasiado largo.\n");
+        return;
+    }
+
+    if (!nombre_variable_valido(nombre)) {
+        printf("Nombre de variable invalido: %s\n", nombre);
+        return;
+    }
+
+    indice = buscar_indice_variable(nombre);
+
+    if (indice < 0) {
+        for (i = 0; i < CMD_ES_MAX_VARIABLES; ++i) {
+            if (!cmd_es_variables[i].en_uso) {
+                indice = i;
+                break;
+            }
+        }
+    }
+
+    if (indice < 0 || indice >= CMD_ES_MAX_VARIABLES) {
+        printf("No hay espacio para mas variables internas.\n");
+        return;
+    }
+
+    if (!guardar_texto_limitado(nombre, cmd_es_variables[indice].nombre, sizeof(cmd_es_variables[indice].nombre))
+        || !guardar_texto_limitado(valor, cmd_es_variables[indice].valor, sizeof(cmd_es_variables[indice].valor))) {
+        printf("No se pudo guardar la variable interna.\n");
+        return;
+    }
+
+    cmd_es_variables[indice].en_uso = 1;
+    printf("Variable definida: %s = %s\n", cmd_es_variables[indice].nombre, cmd_es_variables[indice].valor);
 }
 
 static void buscar_en_archivo(const char *texto, const char *archivo, int ignorar_mayusculas) {
@@ -945,6 +1147,81 @@ static int comparar_lineas_alfabetico(const void *izquierda, const void *derecha
     return strcmp(linea_izquierda, linea_derecha);
 }
 
+static int copiar_segmento_recortado(const char *inicio, const char *fin, char *destino, size_t tamanio) {
+    size_t longitud;
+
+    if (tamanio == 0) {
+        return 0;
+    }
+
+    while (inicio < fin && (*inicio == ' ' || *inicio == '\t' || *inicio == '\r')) {
+        ++inicio;
+    }
+
+    while (fin > inicio && (fin[-1] == ' ' || fin[-1] == '\t' || fin[-1] == '\r')) {
+        --fin;
+    }
+
+    longitud = (size_t)(fin - inicio);
+
+    if (longitud >= tamanio) {
+        return 0;
+    }
+
+    memcpy(destino, inicio, longitud);
+    destino[longitud] = '\0';
+    return 1;
+}
+
+static int guardar_texto_limitado(const char *origen, char *destino, size_t tamanio) {
+    size_t longitud;
+
+    longitud = strlen(origen);
+
+    if (longitud >= tamanio) {
+        return 0;
+    }
+
+    memcpy(destino, origen, longitud + 1);
+    return 1;
+}
+
+static int buscar_indice_variable(const char *nombre) {
+    int i;
+
+    for (i = 0; i < CMD_ES_MAX_VARIABLES; ++i) {
+        if (!cmd_es_variables[i].en_uso) {
+            continue;
+        }
+
+        if (strcmp(cmd_es_variables[i].nombre, nombre) == 0) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+static int nombre_variable_valido(const char *nombre) {
+    size_t i;
+
+    if (nombre[0] == '\0') {
+        return 0;
+    }
+
+    if (!(isalpha((unsigned char)nombre[0]) || nombre[0] == '_')) {
+        return 0;
+    }
+
+    for (i = 1; nombre[i] != '\0'; ++i) {
+        if (!(isalnum((unsigned char)nombre[i]) || nombre[i] == '_')) {
+            return 0;
+        }
+    }
+
+    return 1;
+}
+
 static char *duplicar_cadena_simple(const char *texto) {
     size_t longitud;
     char *copia;
@@ -1021,5 +1298,6 @@ void yyerror(const char *s) {
 }
 
 int main(void) {
+    inicializar_entorno_interno();
     return yyparse();
 }

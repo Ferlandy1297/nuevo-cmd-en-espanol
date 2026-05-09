@@ -1,7 +1,7 @@
 AYUDA
-BUSCAR hola ejemplo.txt
-BUSCAR_TEXTO mundo ejemplo.txt
-MAS ejemplo.txt
-ORDENAR ejemplo.txt
-COMPARAR ejemplo.txt ejemplo2.txt
+DEFINIR usuario=Ferlandy
+DEFINIR usuario
+RUTA
+RUTA C:\MiRutaInterna
+SIMBOLO CMD-ES>
 SALIR
