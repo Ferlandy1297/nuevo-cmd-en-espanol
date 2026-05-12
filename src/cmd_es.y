@@ -1481,7 +1481,7 @@ static CmdEsValor *obtener_valor_identificador(const char *identificador) {
 
     if (indice < 0 || tabla == NULL || tabla[indice].valor == NULL) {
         cmd_es_linea_invalida = 1;
-        fprintf(stderr, "Error semantico (linea %d): variable no definida: %s.\n", numero_linea_comando(), identificador);
+        fprintf(stderr, "Error semantico (linea %d): la variable '%s' no ha sido declarada o no esta visible en este scope.\n", numero_linea_comando(), identificador);
         return crear_valor_invalido();
     }
 
@@ -2181,7 +2181,7 @@ static int asignar_variable_lenguaje(const char *nombre, const CmdEsValor *valor
 
     if (indice < 0 || tabla == NULL) {
         cmd_es_linea_invalida = 1;
-        fprintf(stderr, "Error semantico (linea %d): la variable '%s' no ha sido declarada.\n", numero_linea_comando(), nombre);
+        fprintf(stderr, "Error semantico (linea %d): la variable '%s' no ha sido declarada o no esta visible en este scope.\n", numero_linea_comando(), nombre);
         return 0;
     }
 
@@ -2330,7 +2330,7 @@ static CmdEsValor *ejecutar_llamada_funcion(const char *nombre, CmdEsArgumentoEx
 
     if (indice < 0) {
         cmd_es_linea_invalida = 1;
-        fprintf(stderr, "Error semantico (linea %d): funcion no declarada: %s.\n", numero_linea_comando(), nombre);
+        fprintf(stderr, "Error semantico (linea %d): la funcion '%s' no ha sido declarada.\n", numero_linea_comando(), nombre);
         return crear_valor_invalido();
     }
 
@@ -2551,7 +2551,7 @@ static double valor_a_decimal(const CmdEsValor *valor) {
 }
 
 static void mostrar_ayuda(void) {
-    printf("AYUDA: Comandos disponibles: AYUDA, VERSION, FECHA, HORA, LIMPIAR, LISTAR, ECO <texto>, PAUSA, TITULO <texto>, COLOR <codigo>, ARBOL, BUSCAR <texto> <archivo>, BUSCAR_TEXTO <texto> <archivo>, MAS <archivo>, ORDENAR <archivo>, COMPARAR <archivo1> <archivo2>, SIMBOLO <texto>, RUTA [texto], DEFINIR [nombre | nombre=valor], CAMBIAR_DIR <nombre | . | ..>, CREAR_DIR <nombre>, ELIMINAR_DIR <nombre>, MOSTRAR <archivo>, ELIMINAR <archivo>, RENOMBRAR <origen> <destino>, COPIAR <origen> <destino>, MOVER <origen> <destino>, lenguaje: var <tipo> <id> [= expresion];, <id> = expresion;, imprimir(expresion);, si (condicion) { ... } [sino { ... }], mientras (condicion) { ... }, para id = inicio hasta limite { ... }, funcion <tipo> nombre(parametros) { ... }, retornar expresion;, romper;, continuar;, SALIR\n");
+    printf("AYUDA: Comandos disponibles: AYUDA, VERSION, FECHA, HORA, LIMPIAR, LISTAR, ECO <texto>, PAUSA, TITULO <texto>, COLOR <codigo>, ARBOL, BUSCAR <texto> <archivo>, BUSCAR_TEXTO <texto> <archivo>, MAS <archivo>, ORDENAR <archivo>, COMPARAR <archivo1> <archivo2>, SIMBOLO <texto>, RUTA [texto], DEFINIR [nombre | nombre=valor], CAMBIAR_DIR <nombre | . | ..>, CREAR_DIR <nombre>, ELIMINAR_DIR <nombre>, MOSTRAR <archivo>, ELIMINAR <archivo>, RENOMBRAR <origen> <destino>, COPIAR <origen> <destino>, MOVER <origen> <destino>, lenguaje: var <tipo> <id> [= expresion];, <id> = expresion;, imprimir(expresion);, si (condicion) { ... } [sino { ... }], mientras (condicion) { ... }, para id = inicio hasta limite { ... }, funcion <tipo> nombre([tipo id, ...]) { ... }, retornar expresion;, romper;, continuar;, tipos: entero, decimal, cadena, booleano. Nota: cada instruccion va en una linea fisica y los bloques usan scope local. SALIR\n");
 }
 
 static void inicializar_entorno_interno(void) {

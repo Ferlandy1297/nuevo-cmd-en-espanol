@@ -1,13 +1,23 @@
 VERSION
+RUTA
+DEFINIR autor=Ferlandy
+DEFINIR autor
+LISTAR
 var entero x = 10;
-si (verdadero) { var entero y_local = 5; imprimir(y_local); }
+var decimal pi = 3.14;
+var cadena nombre = "Ferlandy";
+var booleano activo = verdadero;
+imprimir(x + 5);
+si (activo) { var entero x = 20; imprimir(x); }
 imprimir(x);
-imprimir(y_local);
 si (verdadero) { var entero sombra = 1; si (verdadero) { var entero sombra = 2; imprimir(sombra); } imprimir(sombra); }
-si (verdadero) { var entero repetida = 1; var entero repetida = 2; }
-funcion entero prueba(entero n) { var entero z = n; retornar z; }
-imprimir(prueba(3));
-romper;
-continuar;
-retornar 1;
+si (x > 5) { imprimir("grande"); } sino { imprimir("pequeno"); }
+mientras (x < 13) { imprimir(x); x = x + 1; }
+funcion entero doble(entero n) { var entero copia = n; retornar copia * 2; }
+funcion cadena saludar(cadena persona) { retornar persona; }
+imprimir(doble(4));
+imprimir(saludar(nombre));
+para i = 1 hasta 5 { si (i == 3) { continuar; } si (i == 5) { romper; } imprimir(i); }
+imprimir(pi * 2);
+imprimir(nombre);
 SALIR

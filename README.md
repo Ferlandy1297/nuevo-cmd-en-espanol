@@ -1,86 +1,41 @@
 # Nuevo CMD en Espanol
 
-Proyecto academico para construir una nueva consola en espanol, inspirada en CMD de Windows. El objetivo es ofrecer comandos nativos en espanol y una experiencia clara para el curso de Compiladores.
+Proyecto academico del curso de Compiladores para construir una consola inspirada en CMD de Windows, pero con comandos en espanol y un pequeno bloque de lenguaje integrado.
 
-Estado actual: Migracion a base Flex/Bison con ejecutable minimo, navegacion basica de directorios, manejo basico de archivos, copia y movimiento simples, una fase inicial de presentacion/interaccion tipo CMD, una fase simple de consulta/procesamiento de texto y una fase simple de entorno/personalizacion.
+## Estado actual
+- Shell tipo CMD en espanol con ayuda, version, fecha, hora, limpiar, listar, arbol, entorno interno y comandos basicos de directorios y archivos.
+- Bloque de lenguaje con variables tipadas (`entero`, `decimal`, `cadena`, `booleano`), expresiones, operadores aritmeticos, logicos y de comparacion.
+- Control de flujo con `si`, `sino`, `mientras`, `para`, `romper` y `continuar`.
+- Funciones simples con parametros tipados, `retornar` y llamadas.
+- Scopes por bloque para el lenguaje y validaciones semanticas basicas.
 
-## Estructura del proyecto (Flex/Bison)
-- `src/cmd_es.l` - lexer con Flex/WinFlex (tokens: AYUDA, VERSION, SALIR, LIMPIAR, FECHA, HORA, LISTAR, ECO, PAUSA, TITULO, COLOR, ARBOL, BUSCAR, BUSCAR_TEXTO, MAS, ORDENAR, COMPARAR, SIMBOLO, RUTA, DEFINIR, CAMBIAR_DIR, CREAR_DIR, ELIMINAR_DIR, MOSTRAR, ELIMINAR, RENOMBRAR, COPIAR, MOVER, PUNTO, PUNTO_PUNTO, NOMBRE, TEXTO y NEWLINE; espacios/tabulaciones ignorados; otros se reportan como error lexico). El lexer es no sensible a mayusculas/minusculas.
-- `src/cmd_es.y` - parser con Bison/WinBison (una instruccion por linea; acciones visibles; salida con SALIR; fecha y hora del sistema; presentacion basica de consola; navegacion basica de directorios; manejo basico de archivos; consulta/procesamiento simple de texto; y entorno/personalizacion simple). Incluye recuperacion por linea para errores sintacticos.
-- `ejemplos/` - archivos de prueba (por ej. `comandos.txt`).
-- `build/` - artefactos generados y ejecutable (`cmd-es.exe`).
-- `legacy/` - intento previo en Python preservado (no se usa ahora).
+## Archivos principales
+- `src/cmd_es.l`: lexer con Flex, no sensible a mayusculas/minusculas.
+- `src/cmd_es.y`: parser y runtime principal con Bison.
+- `ejemplos/comandos.txt`: demo integral del shell y del lenguaje.
+- `build/build.bat`: forma recomendada de compilacion en el entorno viejo del curso.
 
-Documentacion adicional en `docs/` (alcance y tabla de comandos iniciales).
+## Compilar
+Desde la raiz del proyecto:
 
-## Compilacion y ejecucion (Windows)
-Requisitos (elige una opcion):
-- Opcion A: `win_flex_bison3` + `gcc` (MinGW/MSYS2) en PATH.
-- Opcion B: WSL con `flex`/`bison` y `gcc`.
-
-Comandos con win_flex/win_bison (PowerShell o CMD):
-Nota: Ejecuta estos comandos desde la raiz del proyecto.
-
-Nota: `build\\build.bat` ya configura el PATH para el entorno antiguo del curso (GnuWin32 y Dev-Cpp/MinGW64).
-
-```
-win_bison -d -o build\cmd_es.tab.c src\cmd_es.y
-win_flex  -o build\lex.yy.c      src\cmd_es.l
-gcc -I build -o build\cmd-es.exe build\cmd_es.tab.c build\lex.yy.c
+```powershell
+cmd /c build\build.bat
 ```
 
-Tambien puedes usar el script:
+## Probar
+Ejecucion interactiva:
 
-```
-build\build.bat
-```
-
-Ejecucion interactiva desde consola:
-
-```
+```powershell
 build\cmd-es.exe
 ```
 
-Ejemplo con archivo de entrada:
+Ejemplo principal:
 
+```powershell
+cmd /c "type ejemplos\comandos.txt | build\cmd-es.exe"
 ```
-type ejemplos\comandos.txt | build\cmd-es.exe
-```
 
-## Comportamiento
-- `AYUDA` muestra mensaje de ayuda.
-- `VERSION` imprime `CMD Espanol v0.1`.
-- `FECHA` muestra la fecha actual del sistema.
-- `HORA` muestra la hora actual del sistema.
-- `LIMPIAR` imprime varias lineas en blanco como limpieza simple compatible.
-- `LISTAR` muestra los directorios y archivos del directorio actual usando el formato `[DIR] nombre` y `[ARC] nombre`.
-- `ECO <texto>` imprime el texto recibido.
-- `PAUSA` muestra un mensaje y espera una tecla.
-- `TITULO <texto>` cambia el titulo de la consola.
-- `COLOR <codigo>` aplica un codigo hexadecimal simple de dos caracteres al estilo CMD.
-- `ARBOL` muestra la estructura basica de subdirectorios del directorio actual.
-- `BUSCAR <texto> <archivo>` muestra las lineas del archivo que contienen el texto indicado.
-- `BUSCAR_TEXTO <texto> <archivo>` realiza una busqueda simple separada para futuras mejoras.
-- `MAS <archivo>` muestra el contenido completo del archivo con un encabezado simple.
-- `ORDENAR <archivo>` lee el archivo, ordena sus lineas alfabeticamente y muestra el resultado.
-- `COMPARAR <archivo1> <archivo2>` indica si ambos archivos son iguales o diferentes.
-- `SIMBOLO <texto>` actualiza el simbolo interno del shell y muestra confirmacion.
-- `RUTA` muestra la ruta interna actual.
-- `RUTA <texto>` actualiza la ruta interna y muestra confirmacion.
-- `DEFINIR` muestra las variables internas almacenadas.
-- `DEFINIR <nombre>` consulta el valor de una variable interna.
-- `DEFINIR <nombre=valor>` crea o actualiza una variable interna en memoria.
-- `CAMBIAR_DIR <nombre>`, `CAMBIAR_DIR .` y `CAMBIAR_DIR ..` cambian al directorio indicado y luego muestran la ruta actual.
-- `CREAR_DIR <nombre>` crea un directorio en la ubicacion actual.
-- `ELIMINAR_DIR <nombre>` elimina un directorio vacio.
-- `MOSTRAR <archivo>` muestra el contenido de un archivo de texto simple si existe.
-- `ELIMINAR <archivo>` elimina un archivo simple si existe.
-- `RENOMBRAR <origen> <destino>` cambia el nombre de un archivo simple si el origen existe y el destino no existe.
-- `COPIAR <origen> <destino>` copia un archivo simple si el origen existe, no es directorio y el destino no existe.
-- `MOVER <origen> <destino>` mueve un archivo simple si el origen existe, no es directorio y el destino no existe.
-- `SALIR` termina la ejecucion.
-- Los comandos se aceptan sin diferenciar mayusculas/minusculas (por ejemplo, `ayuda`, `AyUdA`).
-
-### Errores
-- Error lexico: reportado por el lexer (caracteres o secuencias no validas). Se imprime el mensaje y se continua con el resto de la linea.
-- Error sintactico: reportado por el parser cuando la secuencia de tokens validos de una linea no forma una instruccion permitida. La gramatica recupera en `NEWLINE` para continuar leyendo lineas siguientes.
+## Notas
+- La gramatica mantiene una instruccion por linea fisica.
+- Los bloques del lenguaje usan llaves `{ ... }` dentro de esa misma linea.
+- `AYUDA` refleja la sintaxis soportada actualmente.
