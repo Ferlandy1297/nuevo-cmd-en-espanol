@@ -19,6 +19,7 @@ int cmd_es_linea_invalida;
 #define CMD_ES_MAX_FUNCIONES_LENGUAJE 32
 #define CMD_ES_MAX_PARAMETROS_FUNCION 16
 #define CMD_ES_MAX_PROFUNDIDAD_LLAMADAS 16
+#define CMD_ES_MAX_SCOPES_LENGUAJE 32
 #define CMD_ES_MAX_NOMBRE_VARIABLE 64
 #define CMD_ES_MAX_VALOR_VARIABLE 256
 #define CMD_ES_MAX_TEXTO_INTERNO MAX_PATH
@@ -141,6 +142,10 @@ typedef struct {
 } CmdEsVariableLenguaje;
 
 typedef struct {
+    CmdEsVariableLenguaje variables[CMD_ES_MAX_VARIABLES_LENGUAJE];
+} CmdEsScopeLenguaje;
+
+typedef struct {
     int en_uso;
     char nombre[CMD_ES_MAX_NOMBRE_VARIABLE];
     CmdEsTipoDato tipo_retorno;
@@ -151,6 +156,8 @@ typedef struct {
 
 typedef struct {
     CmdEsVariableLenguaje variables[CMD_ES_MAX_VARIABLES_LENGUAJE];
+    CmdEsScopeLenguaje scopes[CMD_ES_MAX_SCOPES_LENGUAJE];
+    int profundidad_scopes;
     CmdEsFuncionLenguaje *funcion;
     CmdEsValor *valor_retorno;
 } CmdEsMarcoLlamada;
@@ -160,6 +167,8 @@ static char cmd_es_ruta_actual[CMD_ES_MAX_TEXTO_INTERNO];
 static int cmd_es_ruta_inicializada;
 static CmdEsVariableInterna cmd_es_variables[CMD_ES_MAX_VARIABLES];
 static CmdEsVariableLenguaje cmd_es_variables_lenguaje[CMD_ES_MAX_VARIABLES_LENGUAJE];
+static CmdEsScopeLenguaje cmd_es_scopes_globales[CMD_ES_MAX_SCOPES_LENGUAJE];
+static int cmd_es_profundidad_scopes_globales;
 static CmdEsFuncionLenguaje cmd_es_funciones_lenguaje[CMD_ES_MAX_FUNCIONES_LENGUAJE];
 static CmdEsMarcoLlamada cmd_es_pila_llamadas[CMD_ES_MAX_PROFUNDIDAD_LLAMADAS];
 static int cmd_es_profundidad_llamadas;
@@ -199,6 +208,7 @@ static CmdEsSentenciaLenguaje *anexar_sentencia(CmdEsSentenciaLenguaje *lista, C
 static void liberar_sentencia_lenguaje(CmdEsSentenciaLenguaje *sentencia);
 static int validar_sentencia_lenguaje(const CmdEsSentenciaLenguaje *sentencia, int profundidad_ciclo, int dentro_funcion);
 static CmdEsResultadoEjecucion ejecutar_sentencia_lenguaje(CmdEsSentenciaLenguaje *sentencia);
+static CmdEsResultadoEjecucion ejecutar_bloque_lenguaje(CmdEsSentenciaLenguaje *sentencia);
 static CmdEsResultadoEjecucion ejecutar_sentencia_individual(CmdEsSentenciaLenguaje *sentencia);
 static CmdEsValor *crear_valor_invalido(void);
 static CmdEsValor *crear_valor_entero(long numero);
@@ -221,13 +231,20 @@ static CmdEsValor *operar_negacion(CmdEsValor *valor);
 static CmdEsValor *operar_negativo(CmdEsValor *valor);
 static int buscar_indice_funcion_lenguaje(const char *nombre);
 static int buscar_indice_variable_lenguaje(const char *nombre);
+static int buscar_indice_variable_en_tabla(const CmdEsVariableLenguaje *tabla, const char *nombre);
+static CmdEsVariableLenguaje *tabla_scope_actual(void);
+static int buscar_indice_variable_global_visible(const char *nombre, CmdEsVariableLenguaje **tabla_encontrada);
+static int buscar_indice_variable_visible(const char *nombre, CmdEsVariableLenguaje **tabla_encontrada);
 static int guardar_variable_lenguaje(const char *nombre, CmdEsTipoDato tipo_dato, const CmdEsValor *valor);
 static int asignar_variable_lenguaje(const char *nombre, const CmdEsValor *valor);
 static int asignar_variable_control_para(const char *nombre, const CmdEsValor *valor);
 static int registrar_funcion_lenguaje(CmdEsSentenciaLenguaje *sentencia);
 static CmdEsValor *ejecutar_llamada_funcion(const char *nombre, CmdEsArgumentoExpresion *argumentos);
 static CmdEsMarcoLlamada *marco_llamada_actual(void);
-static int buscar_indice_variable_local(const CmdEsMarcoLlamada *marco, const char *nombre);
+static int buscar_indice_variable_local(CmdEsMarcoLlamada *marco, const char *nombre, CmdEsVariableLenguaje **tabla_encontrada);
+static int empujar_scope_lenguaje(void);
+static void sacar_scope_lenguaje(void);
+static void limpiar_tabla_variables(CmdEsVariableLenguaje *tabla);
 static void limpiar_variables_marco(CmdEsMarcoLlamada *marco);
 static CmdEsValor *convertir_valor_a_tipo(CmdEsTipoDato tipo_dato, const CmdEsValor *valor, const char *identificador);
 static const char *nombre_tipo_dato(CmdEsTipoDato tipo_dato);
@@ -1078,6 +1095,18 @@ static CmdEsResultadoEjecucion ejecutar_sentencia_lenguaje(CmdEsSentenciaLenguaj
     return CMD_ES_RESULTADO_NORMAL;
 }
 
+static CmdEsResultadoEjecucion ejecutar_bloque_lenguaje(CmdEsSentenciaLenguaje *sentencia) {
+    CmdEsResultadoEjecucion resultado;
+
+    if (!empujar_scope_lenguaje()) {
+        return CMD_ES_RESULTADO_ERROR;
+    }
+
+    resultado = ejecutar_sentencia_lenguaje(sentencia);
+    sacar_scope_lenguaje();
+    return resultado;
+}
+
 static CmdEsResultadoEjecucion ejecutar_sentencia_individual(CmdEsSentenciaLenguaje *sentencia) {
     CmdEsValor *valor;
     CmdEsResultadoEjecucion resultado;
@@ -1154,8 +1183,8 @@ static CmdEsResultadoEjecucion ejecutar_sentencia_individual(CmdEsSentenciaLengu
             }
 
             resultado = valor->booleano
-                ? ejecutar_sentencia_lenguaje(sentencia->bloque_principal)
-                : ejecutar_sentencia_lenguaje(sentencia->bloque_secundario);
+                ? ejecutar_bloque_lenguaje(sentencia->bloque_principal)
+                : ejecutar_bloque_lenguaje(sentencia->bloque_secundario);
             liberar_valor(valor);
             return resultado;
         case CMD_ES_SENTENCIA_MIENTRAS:
@@ -1180,7 +1209,7 @@ static CmdEsResultadoEjecucion ejecutar_sentencia_individual(CmdEsSentenciaLengu
                 }
 
                 liberar_valor(valor);
-                resultado = ejecutar_sentencia_lenguaje(sentencia->bloque_principal);
+                resultado = ejecutar_bloque_lenguaje(sentencia->bloque_principal);
 
                 if (resultado == CMD_ES_RESULTADO_ERROR) {
                     return CMD_ES_RESULTADO_ERROR;
@@ -1199,7 +1228,11 @@ static CmdEsResultadoEjecucion ejecutar_sentencia_individual(CmdEsSentenciaLengu
         case CMD_ES_SENTENCIA_PARA: {
             CmdEsValor *inicio;
             CmdEsValor *limite;
+            CmdEsResultadoEjecucion resultado_final;
+            int scope_creado;
 
+            resultado_final = CMD_ES_RESULTADO_NORMAL;
+            scope_creado = 0;
             inicio = evaluar_expresion(sentencia->expresion_principal);
             limite = evaluar_expresion(sentencia->expresion_secundaria);
 
@@ -1217,6 +1250,14 @@ static CmdEsResultadoEjecucion ejecutar_sentencia_individual(CmdEsSentenciaLengu
                 return CMD_ES_RESULTADO_ERROR;
             }
 
+            if (!empujar_scope_lenguaje()) {
+                liberar_valor(inicio);
+                liberar_valor(limite);
+                return CMD_ES_RESULTADO_ERROR;
+            }
+
+            scope_creado = 1;
+
             if (inicio->tipo == CMD_ES_TIPO_DECIMAL || limite->tipo == CMD_ES_TIPO_DECIMAL) {
                 double actual;
                 double ultimo;
@@ -1233,24 +1274,21 @@ static CmdEsResultadoEjecucion ejecutar_sentencia_individual(CmdEsSentenciaLengu
 
                     if (!asignar_variable_control_para(sentencia->identificador, iteracion)) {
                         liberar_valor(iteracion);
-                        liberar_valor(inicio);
-                        liberar_valor(limite);
-                        return CMD_ES_RESULTADO_ERROR;
+                        resultado_final = CMD_ES_RESULTADO_ERROR;
+                        goto finalizar_para;
                     }
 
                     liberar_valor(iteracion);
-                    resultado = ejecutar_sentencia_lenguaje(sentencia->bloque_principal);
+                    resultado = ejecutar_bloque_lenguaje(sentencia->bloque_principal);
 
                     if (resultado == CMD_ES_RESULTADO_ERROR) {
-                        liberar_valor(inicio);
-                        liberar_valor(limite);
-                        return CMD_ES_RESULTADO_ERROR;
+                        resultado_final = CMD_ES_RESULTADO_ERROR;
+                        goto finalizar_para;
                     }
 
                     if (resultado == CMD_ES_RESULTADO_RETORNAR) {
-                        liberar_valor(inicio);
-                        liberar_valor(limite);
-                        return CMD_ES_RESULTADO_RETORNAR;
+                        resultado_final = CMD_ES_RESULTADO_RETORNAR;
+                        goto finalizar_para;
                     }
 
                     if (resultado == CMD_ES_RESULTADO_ROMPER) {
@@ -1275,24 +1313,21 @@ static CmdEsResultadoEjecucion ejecutar_sentencia_individual(CmdEsSentenciaLengu
 
                     if (!asignar_variable_control_para(sentencia->identificador, iteracion)) {
                         liberar_valor(iteracion);
-                        liberar_valor(inicio);
-                        liberar_valor(limite);
-                        return CMD_ES_RESULTADO_ERROR;
+                        resultado_final = CMD_ES_RESULTADO_ERROR;
+                        goto finalizar_para;
                     }
 
                     liberar_valor(iteracion);
-                    resultado = ejecutar_sentencia_lenguaje(sentencia->bloque_principal);
+                    resultado = ejecutar_bloque_lenguaje(sentencia->bloque_principal);
 
                     if (resultado == CMD_ES_RESULTADO_ERROR) {
-                        liberar_valor(inicio);
-                        liberar_valor(limite);
-                        return CMD_ES_RESULTADO_ERROR;
+                        resultado_final = CMD_ES_RESULTADO_ERROR;
+                        goto finalizar_para;
                     }
 
                     if (resultado == CMD_ES_RESULTADO_RETORNAR) {
-                        liberar_valor(inicio);
-                        liberar_valor(limite);
-                        return CMD_ES_RESULTADO_RETORNAR;
+                        resultado_final = CMD_ES_RESULTADO_RETORNAR;
+                        goto finalizar_para;
                     }
 
                     if (resultado == CMD_ES_RESULTADO_ROMPER) {
@@ -1303,9 +1338,15 @@ static CmdEsResultadoEjecucion ejecutar_sentencia_individual(CmdEsSentenciaLengu
                 }
             }
 
+finalizar_para:
             liberar_valor(inicio);
             liberar_valor(limite);
-            return CMD_ES_RESULTADO_NORMAL;
+
+            if (scope_creado) {
+                sacar_scope_lenguaje();
+            }
+
+            return resultado_final;
         }
         case CMD_ES_SENTENCIA_RETORNAR: {
             CmdEsMarcoLlamada *marco;
@@ -1433,24 +1474,18 @@ static void liberar_valor(CmdEsValor *valor) {
 
 static CmdEsValor *obtener_valor_identificador(const char *identificador) {
     int indice;
-    CmdEsMarcoLlamada *marco;
+    CmdEsVariableLenguaje *tabla;
 
-    marco = marco_llamada_actual();
-    indice = buscar_indice_variable_local(marco, identificador);
+    tabla = NULL;
+    indice = buscar_indice_variable_visible(identificador, &tabla);
 
-    if (indice >= 0 && marco != NULL && marco->variables[indice].valor != NULL) {
-        return copiar_valor_lenguaje(marco->variables[indice].valor);
-    }
-
-    indice = buscar_indice_variable_lenguaje(identificador);
-
-    if (indice < 0 || cmd_es_variables_lenguaje[indice].valor == NULL) {
+    if (indice < 0 || tabla == NULL || tabla[indice].valor == NULL) {
         cmd_es_linea_invalida = 1;
         fprintf(stderr, "Error semantico (linea %d): variable no definida: %s.\n", numero_linea_comando(), identificador);
         return crear_valor_invalido();
     }
 
-    return copiar_valor_lenguaje(cmd_es_variables_lenguaje[indice].valor);
+    return copiar_valor_lenguaje(tabla[indice].valor);
 }
 
 static CmdEsValor *operar_suma(CmdEsValor *izquierda, CmdEsValor *derecha) {
@@ -1850,24 +1885,146 @@ static CmdEsMarcoLlamada *marco_llamada_actual(void) {
     return &cmd_es_pila_llamadas[cmd_es_profundidad_llamadas - 1];
 }
 
-static int buscar_indice_variable_local(const CmdEsMarcoLlamada *marco, const char *nombre) {
+static int buscar_indice_variable_en_tabla(const CmdEsVariableLenguaje *tabla, const char *nombre) {
     int i;
 
-    if (marco == NULL) {
+    if (tabla == NULL) {
         return -1;
     }
 
     for (i = 0; i < CMD_ES_MAX_VARIABLES_LENGUAJE; ++i) {
-        if (!marco->variables[i].en_uso) {
+        if (!tabla[i].en_uso) {
             continue;
         }
 
-        if (strcmp(marco->variables[i].nombre, nombre) == 0) {
+        if (strcmp(tabla[i].nombre, nombre) == 0) {
             return i;
         }
     }
 
     return -1;
+}
+
+static CmdEsVariableLenguaje *tabla_scope_actual(void) {
+    CmdEsMarcoLlamada *marco;
+
+    marco = marco_llamada_actual();
+
+    if (marco != NULL) {
+        if (marco->profundidad_scopes > 0) {
+            return marco->scopes[marco->profundidad_scopes - 1].variables;
+        }
+
+        return marco->variables;
+    }
+
+    if (cmd_es_profundidad_scopes_globales > 0) {
+        return cmd_es_scopes_globales[cmd_es_profundidad_scopes_globales - 1].variables;
+    }
+
+    return cmd_es_variables_lenguaje;
+}
+
+static int buscar_indice_variable_local(CmdEsMarcoLlamada *marco, const char *nombre, CmdEsVariableLenguaje **tabla_encontrada) {
+    int i;
+    int indice;
+
+    if (marco == NULL) {
+        return -1;
+    }
+
+    for (i = marco->profundidad_scopes - 1; i >= 0; --i) {
+        indice = buscar_indice_variable_en_tabla(marco->scopes[i].variables, nombre);
+
+        if (indice >= 0) {
+            if (tabla_encontrada != NULL) {
+                *tabla_encontrada = marco->scopes[i].variables;
+            }
+
+            return indice;
+        }
+    }
+
+    indice = buscar_indice_variable_en_tabla(marco->variables, nombre);
+
+    if (indice >= 0 && tabla_encontrada != NULL) {
+        *tabla_encontrada = marco->variables;
+    }
+
+    return indice;
+}
+
+static int empujar_scope_lenguaje(void) {
+    CmdEsMarcoLlamada *marco;
+
+    marco = marco_llamada_actual();
+
+    if (marco != NULL) {
+        if (marco->profundidad_scopes >= CMD_ES_MAX_SCOPES_LENGUAJE) {
+            cmd_es_linea_invalida = 1;
+            fprintf(stderr, "Error semantico (linea %d): se excedio la profundidad maxima de scopes locales.\n", numero_linea_comando());
+            return 0;
+        }
+
+        memset(&marco->scopes[marco->profundidad_scopes], 0, sizeof(CmdEsScopeLenguaje));
+        ++marco->profundidad_scopes;
+        return 1;
+    }
+
+    if (cmd_es_profundidad_scopes_globales >= CMD_ES_MAX_SCOPES_LENGUAJE) {
+        cmd_es_linea_invalida = 1;
+        fprintf(stderr, "Error semantico (linea %d): se excedio la profundidad maxima de scopes globales.\n", numero_linea_comando());
+        return 0;
+    }
+
+    memset(&cmd_es_scopes_globales[cmd_es_profundidad_scopes_globales], 0, sizeof(CmdEsScopeLenguaje));
+    ++cmd_es_profundidad_scopes_globales;
+    return 1;
+}
+
+static void limpiar_tabla_variables(CmdEsVariableLenguaje *tabla) {
+    int i;
+
+    if (tabla == NULL) {
+        return;
+    }
+
+    for (i = 0; i < CMD_ES_MAX_VARIABLES_LENGUAJE; ++i) {
+        if (!tabla[i].en_uso) {
+            continue;
+        }
+
+        liberar_valor(tabla[i].valor);
+        tabla[i].valor = NULL;
+        tabla[i].en_uso = 0;
+        tabla[i].nombre[0] = '\0';
+        tabla[i].tipo = CMD_ES_TIPO_INVALIDO;
+    }
+}
+
+static void sacar_scope_lenguaje(void) {
+    CmdEsMarcoLlamada *marco;
+
+    marco = marco_llamada_actual();
+
+    if (marco != NULL) {
+        if (marco->profundidad_scopes <= 0) {
+            return;
+        }
+
+        --marco->profundidad_scopes;
+        limpiar_tabla_variables(marco->scopes[marco->profundidad_scopes].variables);
+        memset(&marco->scopes[marco->profundidad_scopes], 0, sizeof(CmdEsScopeLenguaje));
+        return;
+    }
+
+    if (cmd_es_profundidad_scopes_globales <= 0) {
+        return;
+    }
+
+    --cmd_es_profundidad_scopes_globales;
+    limpiar_tabla_variables(cmd_es_scopes_globales[cmd_es_profundidad_scopes_globales].variables);
+    memset(&cmd_es_scopes_globales[cmd_es_profundidad_scopes_globales], 0, sizeof(CmdEsScopeLenguaje));
 }
 
 static void limpiar_variables_marco(CmdEsMarcoLlamada *marco) {
@@ -1877,18 +2034,14 @@ static void limpiar_variables_marco(CmdEsMarcoLlamada *marco) {
         return;
     }
 
-    for (i = 0; i < CMD_ES_MAX_VARIABLES_LENGUAJE; ++i) {
-        if (!marco->variables[i].en_uso) {
-            continue;
-        }
+    limpiar_tabla_variables(marco->variables);
 
-        liberar_valor(marco->variables[i].valor);
-        marco->variables[i].valor = NULL;
-        marco->variables[i].en_uso = 0;
-        marco->variables[i].nombre[0] = '\0';
-        marco->variables[i].tipo = CMD_ES_TIPO_INVALIDO;
+    for (i = 0; i < marco->profundidad_scopes; ++i) {
+        limpiar_tabla_variables(marco->scopes[i].variables);
+        memset(&marco->scopes[i], 0, sizeof(CmdEsScopeLenguaje));
     }
 
+    marco->profundidad_scopes = 0;
     liberar_valor(marco->valor_retorno);
     marco->valor_retorno = NULL;
     marco->funcion = NULL;
@@ -1910,11 +2063,59 @@ static int buscar_indice_variable_lenguaje(const char *nombre) {
     return -1;
 }
 
+static int buscar_indice_variable_global_visible(const char *nombre, CmdEsVariableLenguaje **tabla_encontrada) {
+    int i;
+    int indice;
+
+    for (i = cmd_es_profundidad_scopes_globales - 1; i >= 0; --i) {
+        indice = buscar_indice_variable_en_tabla(cmd_es_scopes_globales[i].variables, nombre);
+
+        if (indice >= 0) {
+            if (tabla_encontrada != NULL) {
+                *tabla_encontrada = cmd_es_scopes_globales[i].variables;
+            }
+
+            return indice;
+        }
+    }
+
+    indice = buscar_indice_variable_lenguaje(nombre);
+
+    if (indice >= 0 && tabla_encontrada != NULL) {
+        *tabla_encontrada = cmd_es_variables_lenguaje;
+    }
+
+    return indice;
+}
+
+static int buscar_indice_variable_visible(const char *nombre, CmdEsVariableLenguaje **tabla_encontrada) {
+    CmdEsMarcoLlamada *marco;
+    int indice;
+
+    marco = marco_llamada_actual();
+    indice = buscar_indice_variable_local(marco, nombre, tabla_encontrada);
+
+    if (indice >= 0) {
+        return indice;
+    }
+
+    if (marco != NULL) {
+        indice = buscar_indice_variable_lenguaje(nombre);
+
+        if (indice >= 0 && tabla_encontrada != NULL) {
+            *tabla_encontrada = cmd_es_variables_lenguaje;
+        }
+
+        return indice;
+    }
+
+    return buscar_indice_variable_global_visible(nombre, tabla_encontrada);
+}
+
 static int guardar_variable_lenguaje(const char *nombre, CmdEsTipoDato tipo_dato, const CmdEsValor *valor) {
     int indice;
     int i;
     CmdEsValor *valor_guardado;
-    CmdEsMarcoLlamada *marco;
     CmdEsVariableLenguaje *tabla;
 
     if (!nombre_variable_valido(nombre)) {
@@ -1923,13 +2124,11 @@ static int guardar_variable_lenguaje(const char *nombre, CmdEsTipoDato tipo_dato
         return 0;
     }
 
-    marco = marco_llamada_actual();
-    tabla = marco != NULL ? marco->variables : cmd_es_variables_lenguaje;
+    tabla = tabla_scope_actual();
 
-    if ((marco != NULL && buscar_indice_variable_local(marco, nombre) >= 0)
-        || (marco == NULL && buscar_indice_variable_lenguaje(nombre) >= 0)) {
+    if (buscar_indice_variable_en_tabla(tabla, nombre) >= 0) {
         cmd_es_linea_invalida = 1;
-        fprintf(stderr, "Error semantico (linea %d): la variable '%s' ya fue declarada.\n", numero_linea_comando(), nombre);
+        fprintf(stderr, "Error semantico (linea %d): la variable '%s' ya fue declarada en este scope.\n", numero_linea_comando(), nombre);
         return 0;
     }
 
@@ -1975,48 +2174,33 @@ static int guardar_variable_lenguaje(const char *nombre, CmdEsTipoDato tipo_dato
 static int asignar_variable_lenguaje(const char *nombre, const CmdEsValor *valor) {
     int indice;
     CmdEsValor *valor_guardado;
-    CmdEsMarcoLlamada *marco;
+    CmdEsVariableLenguaje *tabla;
 
-    marco = marco_llamada_actual();
-    indice = buscar_indice_variable_local(marco, nombre);
+    tabla = NULL;
+    indice = buscar_indice_variable_visible(nombre, &tabla);
 
-    if (indice >= 0 && marco != NULL) {
-        valor_guardado = convertir_valor_a_tipo(marco->variables[indice].tipo, valor, nombre);
-
-        if (valor_guardado == NULL || valor_guardado->tipo == CMD_ES_TIPO_INVALIDO) {
-            liberar_valor(valor_guardado);
-            return 0;
-        }
-
-        liberar_valor(marco->variables[indice].valor);
-        marco->variables[indice].valor = valor_guardado;
-        return 1;
-    }
-
-    indice = buscar_indice_variable_lenguaje(nombre);
-
-    if (indice < 0) {
+    if (indice < 0 || tabla == NULL) {
         cmd_es_linea_invalida = 1;
         fprintf(stderr, "Error semantico (linea %d): la variable '%s' no ha sido declarada.\n", numero_linea_comando(), nombre);
         return 0;
     }
 
-    valor_guardado = convertir_valor_a_tipo(cmd_es_variables_lenguaje[indice].tipo, valor, nombre);
+    valor_guardado = convertir_valor_a_tipo(tabla[indice].tipo, valor, nombre);
 
     if (valor_guardado == NULL || valor_guardado->tipo == CMD_ES_TIPO_INVALIDO) {
         liberar_valor(valor_guardado);
         return 0;
     }
 
-    liberar_valor(cmd_es_variables_lenguaje[indice].valor);
-    cmd_es_variables_lenguaje[indice].valor = valor_guardado;
+    liberar_valor(tabla[indice].valor);
+    tabla[indice].valor = valor_guardado;
     return 1;
 }
 
 static int asignar_variable_control_para(const char *nombre, const CmdEsValor *valor) {
     int indice;
     CmdEsTipoDato tipo_dato;
-    CmdEsMarcoLlamada *marco;
+    CmdEsVariableLenguaje *tabla;
 
     if (valor == NULL || valor->tipo == CMD_ES_TIPO_INVALIDO) {
         return 0;
@@ -2028,27 +2212,15 @@ static int asignar_variable_control_para(const char *nombre, const CmdEsValor *v
         return 0;
     }
 
-    marco = marco_llamada_actual();
-    indice = buscar_indice_variable_local(marco, nombre);
+    tabla = NULL;
+    indice = buscar_indice_variable_visible(nombre, &tabla);
 
-    if (indice >= 0 && marco != NULL) {
-        if (!valor_es_numerico(marco->variables[indice].valor)) {
-            cmd_es_linea_invalida = 1;
-            fprintf(stderr, "Error semantico (linea %d): la variable '%s' ya existe y no es numerica para usarla en PARA.\n", numero_linea_comando(), nombre);
-            return 0;
-        }
-
-        return asignar_variable_lenguaje(nombre, valor);
-    }
-
-    indice = buscar_indice_variable_lenguaje(nombre);
-
-    if (indice < 0) {
+    if (indice < 0 || tabla == NULL) {
         tipo_dato = valor->tipo == CMD_ES_TIPO_DECIMAL ? CMD_ES_TIPO_DECIMAL : CMD_ES_TIPO_ENTERO;
         return guardar_variable_lenguaje(nombre, tipo_dato, valor);
     }
 
-    if (!valor_es_numerico(cmd_es_variables_lenguaje[indice].valor)) {
+    if (!valor_es_numerico(tabla[indice].valor)) {
         cmd_es_linea_invalida = 1;
         fprintf(stderr, "Error semantico (linea %d): la variable '%s' ya existe y no es numerica para usarla en PARA.\n", numero_linea_comando(), nombre);
         return 0;
@@ -2392,6 +2564,7 @@ static void inicializar_entorno_interno(void) {
     }
 
     cmd_es_ruta_inicializada = 1;
+    cmd_es_profundidad_scopes_globales = 0;
 }
 
 static void limpiar_pantalla_simple(void) {
