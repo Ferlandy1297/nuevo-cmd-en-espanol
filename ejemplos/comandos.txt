@@ -5,8 +5,12 @@ var decimal pi = 3.14;
 var cadena nombre = "Ferlandy";
 var booleano activo = verdadero;
 imprimir(x);
-x = x + 5;
-imprimir(x);
+si (x > 5) { imprimir("grande"); }
+si (x > 20) { imprimir("alto"); } sino { imprimir("normal"); }
+mientras (x < 15) { imprimir(x); x = x + 1; }
+para i = 1 hasta 3 { imprimir(i); }
+para i = 1 hasta 5 { si (i == 3) { continuar; } imprimir(i); }
+para i = 1 hasta 5 { si (i == 4) { romper; } imprimir(i); }
 imprimir(pi * 2);
 imprimir(nombre);
 imprimir(activo Y (x >= 15));

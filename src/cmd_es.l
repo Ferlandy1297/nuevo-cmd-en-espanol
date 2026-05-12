@@ -6,6 +6,7 @@
 %x ESTADO_TEXTO ESTADO_COLOR ESTADO_NOMBRE
 
 %{
+typedef struct CmdEsExpresion CmdEsExpresion;
 typedef struct CmdEsValor CmdEsValor;
 typedef struct CmdEsSentenciaLenguaje CmdEsSentenciaLenguaje;
 
@@ -55,6 +56,13 @@ DECIMAL_K           [Dd][Ee][Cc][Ii][Mm][Aa][Ll]
 CADENA_K            [Cc][Aa][Dd][Ee][Nn][Aa]
 BOOLEANO_K          [Bb][Oo][Oo][Ll][Ee][Aa][Nn][Oo]
 IMPRIMIR_K          [Ii][Mm][Pp][Rr][Ii][Mm][Ii][Rr]
+SI_K                [Ss][Ii]
+SINO_K              [Ss][Ii][Nn][Oo]
+MIENTRAS_K          [Mm][Ii][Ee][Nn][Tt][Rr][Aa][Ss]
+PARA_K              [Pp][Aa][Rr][Aa]
+HASTA_K             [Hh][Aa][Ss][Tt][Aa]
+ROMPER_K            [Rr][Oo][Mm][Pp][Ee][Rr]
+CONTINUAR_K         [Cc][Oo][Nn][Tt][Ii][Nn][Uu][Aa][Rr]
 VERDADERO_K         [Vv][Ee][Rr][Dd][Aa][Dd][Ee][Rr][Oo]
 FALSO_K             [Ff][Aa][Ll][Ss][Oo]
 Y_K                 [Yy]
@@ -65,7 +73,7 @@ PUNTO_K             \.
 DECIMAL_LIT         [0-9]+\.[0-9]+
 ENTERO_LIT          [0-9]+
 IDENTIFICADOR_L     [A-Za-z_][A-Za-z0-9_]*
-CADENA_LIT          \"([^\\\n]|\\.)*\"
+CADENA_LIT          \"([^\\\"\n]|\\.)*\"
 NOMBRE_ARG          [^ \t\r\n]+
 
 %%
@@ -104,6 +112,13 @@ NOMBRE_ARG          [^ \t\r\n]+
 <INITIAL>{CADENA_K}              return TIPO_CADENA;
 <INITIAL>{BOOLEANO_K}            return TIPO_BOOLEANO;
 <INITIAL>{IMPRIMIR_K}            return IMPRIMIR;
+<INITIAL>{SINO_K}                return SINO;
+<INITIAL>{SI_K}                  return SI;
+<INITIAL>{MIENTRAS_K}            return MIENTRAS;
+<INITIAL>{PARA_K}                return PARA;
+<INITIAL>{HASTA_K}               return HASTA;
+<INITIAL>{ROMPER_K}              return ROMPER;
+<INITIAL>{CONTINUAR_K}           return CONTINUAR;
 <INITIAL>{VERDADERO_K}           return VERDADERO;
 <INITIAL>{FALSO_K}               return FALSO;
 <INITIAL>{NO_K}                  return NO;
@@ -132,6 +147,8 @@ NOMBRE_ARG          [^ \t\r\n]+
 <INITIAL>";"                     return ';';
 <INITIAL>"("                     return '(';
 <INITIAL>")"                     return ')';
+<INITIAL>"{"                     return '{';
+<INITIAL>"}"                     return '}';
 <INITIAL>"="                     return '=';
 <INITIAL>"+"                     return '+';
 <INITIAL>"-"                     return '-';
