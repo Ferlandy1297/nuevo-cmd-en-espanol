@@ -1,7 +1,13 @@
-AYUDA
-DEFINIR usuario=Ferlandy
-DEFINIR usuario
-RUTA
-RUTA C:\MiRutaInterna
-SIMBOLO CMD-ES>
+VERSION
+LISTAR
+var entero x = 10;
+var decimal pi = 3.14;
+var cadena nombre = "Ferlandy";
+var booleano activo = verdadero;
+imprimir(x);
+x = x + 5;
+imprimir(x);
+imprimir(pi * 2);
+imprimir(nombre);
+imprimir(activo Y (x >= 15));
 SALIR

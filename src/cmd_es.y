@@ -15,9 +15,39 @@ extern int yylineno;
 int cmd_es_linea_invalida;
 
 #define CMD_ES_MAX_VARIABLES 32
+#define CMD_ES_MAX_VARIABLES_LENGUAJE 64
 #define CMD_ES_MAX_NOMBRE_VARIABLE 64
 #define CMD_ES_MAX_VALOR_VARIABLE 256
 #define CMD_ES_MAX_TEXTO_INTERNO MAX_PATH
+
+typedef enum {
+    CMD_ES_TIPO_INVALIDO = 0,
+    CMD_ES_TIPO_ENTERO,
+    CMD_ES_TIPO_DECIMAL,
+    CMD_ES_TIPO_CADENA,
+    CMD_ES_TIPO_BOOLEANO
+} CmdEsTipoDato;
+
+typedef struct CmdEsValor {
+    CmdEsTipoDato tipo;
+    long entero;
+    double decimal;
+    int booleano;
+    char *cadena;
+} CmdEsValor;
+
+typedef enum {
+    CMD_ES_SENTENCIA_DECLARACION = 1,
+    CMD_ES_SENTENCIA_ASIGNACION,
+    CMD_ES_SENTENCIA_IMPRESION
+} CmdEsTipoSentenciaLenguaje;
+
+typedef struct CmdEsSentenciaLenguaje {
+    CmdEsTipoSentenciaLenguaje tipo_sentencia;
+    CmdEsTipoDato tipo_dato;
+    char *identificador;
+    CmdEsValor *valor;
+} CmdEsSentenciaLenguaje;
 
 typedef struct {
     int en_uso;
@@ -25,13 +55,53 @@ typedef struct {
     char valor[CMD_ES_MAX_VALOR_VARIABLE];
 } CmdEsVariableInterna;
 
+typedef struct {
+    int en_uso;
+    char nombre[CMD_ES_MAX_NOMBRE_VARIABLE];
+    CmdEsTipoDato tipo;
+    CmdEsValor *valor;
+} CmdEsVariableLenguaje;
+
 static char cmd_es_simbolo_actual[CMD_ES_MAX_TEXTO_INTERNO] = "CMD-ES>";
 static char cmd_es_ruta_actual[CMD_ES_MAX_TEXTO_INTERNO];
 static int cmd_es_ruta_inicializada;
 static CmdEsVariableInterna cmd_es_variables[CMD_ES_MAX_VARIABLES];
+static CmdEsVariableLenguaje cmd_es_variables_lenguaje[CMD_ES_MAX_VARIABLES_LENGUAJE];
 
 static void mostrar_ayuda(void);
 static void inicializar_entorno_interno(void);
+static CmdEsSentenciaLenguaje *crear_sentencia_declaracion(int tipo_dato, char *identificador, CmdEsValor *valor);
+static CmdEsSentenciaLenguaje *crear_sentencia_asignacion(char *identificador, CmdEsValor *valor);
+static CmdEsSentenciaLenguaje *crear_sentencia_impresion(CmdEsValor *valor);
+static void liberar_sentencia_lenguaje(CmdEsSentenciaLenguaje *sentencia);
+static void ejecutar_sentencia_lenguaje(CmdEsSentenciaLenguaje *sentencia);
+static CmdEsValor *crear_valor_invalido(void);
+static CmdEsValor *crear_valor_entero(long numero);
+static CmdEsValor *crear_valor_decimal(double numero);
+static CmdEsValor *crear_valor_cadena(const char *texto);
+static CmdEsValor *crear_valor_booleano(int valor);
+static CmdEsValor *crear_valor_por_defecto(CmdEsTipoDato tipo_dato);
+static CmdEsValor *copiar_valor_lenguaje(const CmdEsValor *valor);
+static void liberar_valor(CmdEsValor *valor);
+static CmdEsValor *obtener_valor_identificador(const char *identificador);
+static CmdEsValor *operar_suma(CmdEsValor *izquierda, CmdEsValor *derecha);
+static CmdEsValor *operar_resta(CmdEsValor *izquierda, CmdEsValor *derecha);
+static CmdEsValor *operar_multiplicacion(CmdEsValor *izquierda, CmdEsValor *derecha);
+static CmdEsValor *operar_division(CmdEsValor *izquierda, CmdEsValor *derecha);
+static CmdEsValor *operar_modulo(CmdEsValor *izquierda, CmdEsValor *derecha);
+static CmdEsValor *operar_igualdad(CmdEsValor *izquierda, CmdEsValor *derecha, int es_igualdad);
+static CmdEsValor *operar_comparacion(CmdEsValor *izquierda, CmdEsValor *derecha, const char *operador);
+static CmdEsValor *operar_logico(CmdEsValor *izquierda, CmdEsValor *derecha, const char *operador);
+static CmdEsValor *operar_negacion(CmdEsValor *valor);
+static CmdEsValor *operar_negativo(CmdEsValor *valor);
+static int buscar_indice_variable_lenguaje(const char *nombre);
+static int guardar_variable_lenguaje(const char *nombre, CmdEsTipoDato tipo_dato, const CmdEsValor *valor);
+static int asignar_variable_lenguaje(const char *nombre, const CmdEsValor *valor);
+static CmdEsValor *convertir_valor_a_tipo(CmdEsTipoDato tipo_dato, const CmdEsValor *valor, const char *identificador);
+static const char *nombre_tipo_dato(CmdEsTipoDato tipo_dato);
+static void imprimir_valor_lenguaje(const CmdEsValor *valor);
+static int valor_es_numerico(const CmdEsValor *valor);
+static double valor_a_decimal(const CmdEsValor *valor);
 static void limpiar_pantalla_simple(void);
 static void mostrar_fecha_actual(void);
 static void mostrar_hora_actual(void);
@@ -77,24 +147,48 @@ static char *duplicar_cadena_simple(const char *texto);
 static void liberar_lineas_archivo(char **lineas, size_t cantidad);
 static void mostrar_directorio_actual(void);
 static const char *descripcion_error_operacion(int codigo_error);
+static int numero_linea_actual(void);
 static int numero_linea_comando(void);
 static void reiniciar_estado_linea(void);
 %}
 
 %union {
     char *texto;
+    long entero;
+    double decimal;
+    int tipo_dato;
+    CmdEsValor *valor;
+    CmdEsSentenciaLenguaje *sentencia;
 }
 
 %token AYUDA VERSION SALIR LIMPIAR FECHA HORA
 %token LISTAR ECO PAUSA TITULO COLOR ARBOL BUSCAR BUSCAR_TEXTO MAS ORDENAR COMPARAR SIMBOLO RUTA DEFINIR CAMBIAR_DIR CREAR_DIR ELIMINAR_DIR MOSTRAR ELIMINAR RENOMBRAR COPIAR MOVER
+%token VAR TIPO_ENTERO TIPO_DECIMAL TIPO_CADENA TIPO_BOOLEANO IMPRIMIR VERDADERO FALSO
+%token IGUAL_IGUAL DIFERENTE MENOR_IGUAL MAYOR_IGUAL Y O NO
 %token PUNTO PUNTO_PUNTO
 %token NEWLINE
-%token <texto> NOMBRE TEXTO
+%token <texto> NOMBRE TEXTO IDENTIFICADOR LITERAL_CADENA
+%token <entero> LITERAL_ENTERO
+%token <decimal> LITERAL_DECIMAL
 
-%destructor { free($$); } NOMBRE TEXTO
+%type <tipo_dato> tipo_lenguaje
+%type <valor> expresion
+%type <sentencia> sentencia_lenguaje
+
+%destructor { free($$); } NOMBRE TEXTO IDENTIFICADOR LITERAL_CADENA
+%destructor { liberar_valor($$); } expresion
+%destructor { liberar_sentencia_lenguaje($$); } sentencia_lenguaje
 
 /* Nota: Los comandos se reconocen sin diferenciar mayusculas/minusculas
    (ver reglas del lexer). */
+
+%left O
+%left Y
+%nonassoc IGUAL_IGUAL DIFERENTE '<' '>' MENOR_IGUAL MAYOR_IGUAL
+%left '+' '-'
+%left '*' '/' '%'
+%right NO
+%right UMINUS
 
 %start input
 
@@ -106,6 +200,13 @@ input
     ;
 
 linea
+    : linea_shell
+    | linea_lenguaje
+    | NEWLINE                     { reiniciar_estado_linea(); }
+    | error NEWLINE               { reiniciar_estado_linea(); yyerrok; }
+    ;
+
+linea_shell
     : AYUDA NEWLINE               { if (!cmd_es_linea_invalida) { mostrar_ayuda(); } reiniciar_estado_linea(); }
     | VERSION NEWLINE             { if (!cmd_es_linea_invalida) { printf("CMD Espanol v0.1\n"); } reiniciar_estado_linea(); }
     | SALIR NEWLINE               { if (!cmd_es_linea_invalida) { printf("Saliendo...\n"); exit(0); } reiniciar_estado_linea(); }
@@ -161,13 +262,820 @@ linea
     | COPIAR NOMBRE NEWLINE       { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): COPIAR requiere un nombre de origen y otro de destino.\n", numero_linea_comando()); } free($2); reiniciar_estado_linea(); }
     | MOVER NEWLINE               { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): MOVER requiere un nombre de origen y otro de destino.\n", numero_linea_comando()); } reiniciar_estado_linea(); }
     | MOVER NOMBRE NEWLINE        { if (!cmd_es_linea_invalida) { fprintf(stderr, "Error sintactico (linea %d): MOVER requiere un nombre de origen y otro de destino.\n", numero_linea_comando()); } free($2); reiniciar_estado_linea(); }
-    | NEWLINE                     { reiniciar_estado_linea(); }
-    | error NEWLINE               { reiniciar_estado_linea(); yyerrok; }
+    ;
+
+linea_lenguaje
+    : sentencia_lenguaje ';' NEWLINE {
+            if (!cmd_es_linea_invalida) {
+                ejecutar_sentencia_lenguaje($1);
+            }
+            liberar_sentencia_lenguaje($1);
+            reiniciar_estado_linea();
+        }
+    | sentencia_lenguaje NEWLINE {
+            if (!cmd_es_linea_invalida) {
+                fprintf(stderr, "Error sintactico (linea %d): falta ';' al final de la sentencia.\n", numero_linea_comando());
+            }
+            liberar_sentencia_lenguaje($1);
+            reiniciar_estado_linea();
+        }
+    ;
+
+sentencia_lenguaje
+    : VAR tipo_lenguaje IDENTIFICADOR            { $$ = crear_sentencia_declaracion($2, $3, NULL); }
+    | VAR tipo_lenguaje IDENTIFICADOR '=' expresion { $$ = crear_sentencia_declaracion($2, $3, $5); }
+    | IDENTIFICADOR '=' expresion                { $$ = crear_sentencia_asignacion($1, $3); }
+    | IMPRIMIR '(' expresion ')'                 { $$ = crear_sentencia_impresion($3); }
+    ;
+
+tipo_lenguaje
+    : TIPO_ENTERO     { $$ = CMD_ES_TIPO_ENTERO; }
+    | TIPO_DECIMAL    { $$ = CMD_ES_TIPO_DECIMAL; }
+    | TIPO_CADENA     { $$ = CMD_ES_TIPO_CADENA; }
+    | TIPO_BOOLEANO   { $$ = CMD_ES_TIPO_BOOLEANO; }
+    ;
+
+expresion
+    : LITERAL_ENTERO               { $$ = crear_valor_entero($1); }
+    | LITERAL_DECIMAL              { $$ = crear_valor_decimal($1); }
+    | LITERAL_CADENA               { $$ = crear_valor_cadena($1); free($1); }
+    | VERDADERO                    { $$ = crear_valor_booleano(1); }
+    | FALSO                        { $$ = crear_valor_booleano(0); }
+    | IDENTIFICADOR                { $$ = obtener_valor_identificador($1); free($1); }
+    | '(' expresion ')'            { $$ = $2; }
+    | '-' expresion %prec UMINUS   { $$ = operar_negativo($2); }
+    | NO expresion                 { $$ = operar_negacion($2); }
+    | expresion '+' expresion      { $$ = operar_suma($1, $3); }
+    | expresion '-' expresion      { $$ = operar_resta($1, $3); }
+    | expresion '*' expresion      { $$ = operar_multiplicacion($1, $3); }
+    | expresion '/' expresion      { $$ = operar_division($1, $3); }
+    | expresion '%' expresion      { $$ = operar_modulo($1, $3); }
+    | expresion IGUAL_IGUAL expresion { $$ = operar_igualdad($1, $3, 1); }
+    | expresion DIFERENTE expresion { $$ = operar_igualdad($1, $3, 0); }
+    | expresion '<' expresion      { $$ = operar_comparacion($1, $3, "<"); }
+    | expresion '>' expresion      { $$ = operar_comparacion($1, $3, ">"); }
+    | expresion MENOR_IGUAL expresion { $$ = operar_comparacion($1, $3, "<="); }
+    | expresion MAYOR_IGUAL expresion { $$ = operar_comparacion($1, $3, ">="); }
+    | expresion Y expresion        { $$ = operar_logico($1, $3, "Y"); }
+    | expresion O expresion        { $$ = operar_logico($1, $3, "O"); }
     ;
 %%
 
+static CmdEsValor *crear_valor_simple(CmdEsTipoDato tipo_dato) {
+    CmdEsValor *valor;
+
+    valor = (CmdEsValor *)malloc(sizeof(CmdEsValor));
+
+    if (valor == NULL) {
+        fprintf(stderr, "Error: memoria insuficiente.\n");
+        exit(1);
+    }
+
+    valor->tipo = tipo_dato;
+    valor->entero = 0;
+    valor->decimal = 0.0;
+    valor->booleano = 0;
+    valor->cadena = NULL;
+    return valor;
+}
+
+static CmdEsSentenciaLenguaje *crear_sentencia_simple(CmdEsTipoSentenciaLenguaje tipo_sentencia) {
+    CmdEsSentenciaLenguaje *sentencia;
+
+    sentencia = (CmdEsSentenciaLenguaje *)malloc(sizeof(CmdEsSentenciaLenguaje));
+
+    if (sentencia == NULL) {
+        fprintf(stderr, "Error: memoria insuficiente.\n");
+        exit(1);
+    }
+
+    sentencia->tipo_sentencia = tipo_sentencia;
+    sentencia->tipo_dato = CMD_ES_TIPO_INVALIDO;
+    sentencia->identificador = NULL;
+    sentencia->valor = NULL;
+    return sentencia;
+}
+
+static CmdEsSentenciaLenguaje *crear_sentencia_declaracion(int tipo_dato, char *identificador, CmdEsValor *valor) {
+    CmdEsSentenciaLenguaje *sentencia;
+
+    sentencia = crear_sentencia_simple(CMD_ES_SENTENCIA_DECLARACION);
+    sentencia->tipo_dato = (CmdEsTipoDato)tipo_dato;
+    sentencia->identificador = identificador;
+    sentencia->valor = valor;
+    return sentencia;
+}
+
+static CmdEsSentenciaLenguaje *crear_sentencia_asignacion(char *identificador, CmdEsValor *valor) {
+    CmdEsSentenciaLenguaje *sentencia;
+
+    sentencia = crear_sentencia_simple(CMD_ES_SENTENCIA_ASIGNACION);
+    sentencia->identificador = identificador;
+    sentencia->valor = valor;
+    return sentencia;
+}
+
+static CmdEsSentenciaLenguaje *crear_sentencia_impresion(CmdEsValor *valor) {
+    CmdEsSentenciaLenguaje *sentencia;
+
+    sentencia = crear_sentencia_simple(CMD_ES_SENTENCIA_IMPRESION);
+    sentencia->valor = valor;
+    return sentencia;
+}
+
+static void liberar_sentencia_lenguaje(CmdEsSentenciaLenguaje *sentencia) {
+    if (sentencia == NULL) {
+        return;
+    }
+
+    free(sentencia->identificador);
+    liberar_valor(sentencia->valor);
+    free(sentencia);
+}
+
+static void ejecutar_sentencia_lenguaje(CmdEsSentenciaLenguaje *sentencia) {
+    if (sentencia == NULL) {
+        return;
+    }
+
+    switch (sentencia->tipo_sentencia) {
+        case CMD_ES_SENTENCIA_DECLARACION:
+            guardar_variable_lenguaje(sentencia->identificador, sentencia->tipo_dato, sentencia->valor);
+            break;
+        case CMD_ES_SENTENCIA_ASIGNACION:
+            asignar_variable_lenguaje(sentencia->identificador, sentencia->valor);
+            break;
+        case CMD_ES_SENTENCIA_IMPRESION:
+            imprimir_valor_lenguaje(sentencia->valor);
+            break;
+        default:
+            fprintf(stderr, "Error interno: sentencia de lenguaje desconocida.\n");
+            cmd_es_linea_invalida = 1;
+            break;
+    }
+}
+
+static CmdEsValor *crear_valor_invalido(void) {
+    return crear_valor_simple(CMD_ES_TIPO_INVALIDO);
+}
+
+static CmdEsValor *crear_valor_entero(long numero) {
+    CmdEsValor *valor;
+
+    valor = crear_valor_simple(CMD_ES_TIPO_ENTERO);
+    valor->entero = numero;
+    return valor;
+}
+
+static CmdEsValor *crear_valor_decimal(double numero) {
+    CmdEsValor *valor;
+
+    valor = crear_valor_simple(CMD_ES_TIPO_DECIMAL);
+    valor->decimal = numero;
+    return valor;
+}
+
+static CmdEsValor *crear_valor_cadena(const char *texto) {
+    CmdEsValor *valor;
+
+    valor = crear_valor_simple(CMD_ES_TIPO_CADENA);
+    valor->cadena = duplicar_cadena_simple(texto != NULL ? texto : "");
+    return valor;
+}
+
+static CmdEsValor *crear_valor_booleano(int valor_booleano) {
+    CmdEsValor *valor;
+
+    valor = crear_valor_simple(CMD_ES_TIPO_BOOLEANO);
+    valor->booleano = valor_booleano ? 1 : 0;
+    return valor;
+}
+
+static CmdEsValor *crear_valor_por_defecto(CmdEsTipoDato tipo_dato) {
+    switch (tipo_dato) {
+        case CMD_ES_TIPO_ENTERO:
+            return crear_valor_entero(0);
+        case CMD_ES_TIPO_DECIMAL:
+            return crear_valor_decimal(0.0);
+        case CMD_ES_TIPO_CADENA:
+            return crear_valor_cadena("");
+        case CMD_ES_TIPO_BOOLEANO:
+            return crear_valor_booleano(0);
+        default:
+            return crear_valor_invalido();
+    }
+}
+
+static CmdEsValor *copiar_valor_lenguaje(const CmdEsValor *valor) {
+    if (valor == NULL) {
+        return crear_valor_invalido();
+    }
+
+    switch (valor->tipo) {
+        case CMD_ES_TIPO_ENTERO:
+            return crear_valor_entero(valor->entero);
+        case CMD_ES_TIPO_DECIMAL:
+            return crear_valor_decimal(valor->decimal);
+        case CMD_ES_TIPO_CADENA:
+            return crear_valor_cadena(valor->cadena != NULL ? valor->cadena : "");
+        case CMD_ES_TIPO_BOOLEANO:
+            return crear_valor_booleano(valor->booleano);
+        default:
+            return crear_valor_invalido();
+    }
+}
+
+static void liberar_valor(CmdEsValor *valor) {
+    if (valor == NULL) {
+        return;
+    }
+
+    if (valor->cadena != NULL) {
+        free(valor->cadena);
+    }
+
+    free(valor);
+}
+
+static CmdEsValor *obtener_valor_identificador(const char *identificador) {
+    int indice;
+
+    indice = buscar_indice_variable_lenguaje(identificador);
+
+    if (indice < 0 || cmd_es_variables_lenguaje[indice].valor == NULL) {
+        cmd_es_linea_invalida = 1;
+        fprintf(stderr, "Error semantico (linea %d): variable no definida: %s.\n", numero_linea_actual(), identificador);
+        return crear_valor_invalido();
+    }
+
+    return copiar_valor_lenguaje(cmd_es_variables_lenguaje[indice].valor);
+}
+
+static CmdEsValor *operar_suma(CmdEsValor *izquierda, CmdEsValor *derecha) {
+    CmdEsValor *resultado;
+    char *texto_concatenado;
+    size_t longitud_izquierda;
+    size_t longitud_derecha;
+
+    if (izquierda == NULL || derecha == NULL) {
+        liberar_valor(izquierda);
+        liberar_valor(derecha);
+        return crear_valor_invalido();
+    }
+
+    if (izquierda->tipo == CMD_ES_TIPO_INVALIDO || derecha->tipo == CMD_ES_TIPO_INVALIDO) {
+        liberar_valor(izquierda);
+        liberar_valor(derecha);
+        return crear_valor_invalido();
+    }
+
+    if (valor_es_numerico(izquierda) && valor_es_numerico(derecha)) {
+        if (izquierda->tipo == CMD_ES_TIPO_ENTERO && derecha->tipo == CMD_ES_TIPO_ENTERO) {
+            resultado = crear_valor_entero(izquierda->entero + derecha->entero);
+        } else {
+            resultado = crear_valor_decimal(valor_a_decimal(izquierda) + valor_a_decimal(derecha));
+        }
+
+        liberar_valor(izquierda);
+        liberar_valor(derecha);
+        return resultado;
+    }
+
+    if (izquierda->tipo == CMD_ES_TIPO_CADENA && derecha->tipo == CMD_ES_TIPO_CADENA) {
+        resultado = crear_valor_simple(CMD_ES_TIPO_CADENA);
+        longitud_izquierda = strlen(izquierda->cadena != NULL ? izquierda->cadena : "");
+        longitud_derecha = strlen(derecha->cadena != NULL ? derecha->cadena : "");
+        texto_concatenado = (char *)malloc(longitud_izquierda + longitud_derecha + 1);
+
+        if (texto_concatenado == NULL) {
+            fprintf(stderr, "Error: memoria insuficiente.\n");
+            exit(1);
+        }
+
+        memcpy(texto_concatenado, izquierda->cadena != NULL ? izquierda->cadena : "", longitud_izquierda);
+        memcpy(texto_concatenado + longitud_izquierda, derecha->cadena != NULL ? derecha->cadena : "", longitud_derecha);
+        texto_concatenado[longitud_izquierda + longitud_derecha] = '\0';
+
+        resultado->cadena = texto_concatenado;
+        liberar_valor(izquierda);
+        liberar_valor(derecha);
+        return resultado;
+    }
+
+    cmd_es_linea_invalida = 1;
+    fprintf(stderr, "Error semantico (linea %d): '+' solo admite numeros o cadenas del mismo tipo.\n", numero_linea_actual());
+    liberar_valor(izquierda);
+    liberar_valor(derecha);
+    return crear_valor_invalido();
+}
+
+static CmdEsValor *operar_resta(CmdEsValor *izquierda, CmdEsValor *derecha) {
+    CmdEsValor *resultado;
+
+    if (izquierda == NULL || derecha == NULL) {
+        liberar_valor(izquierda);
+        liberar_valor(derecha);
+        return crear_valor_invalido();
+    }
+
+    if (izquierda->tipo == CMD_ES_TIPO_INVALIDO || derecha->tipo == CMD_ES_TIPO_INVALIDO) {
+        liberar_valor(izquierda);
+        liberar_valor(derecha);
+        return crear_valor_invalido();
+    }
+
+    if (!valor_es_numerico(izquierda) || !valor_es_numerico(derecha)) {
+        cmd_es_linea_invalida = 1;
+        fprintf(stderr, "Error semantico (linea %d): '-' solo admite numeros.\n", numero_linea_actual());
+        liberar_valor(izquierda);
+        liberar_valor(derecha);
+        return crear_valor_invalido();
+    }
+
+    if (izquierda->tipo == CMD_ES_TIPO_ENTERO && derecha->tipo == CMD_ES_TIPO_ENTERO) {
+        resultado = crear_valor_entero(izquierda->entero - derecha->entero);
+    } else {
+        resultado = crear_valor_decimal(valor_a_decimal(izquierda) - valor_a_decimal(derecha));
+    }
+
+    liberar_valor(izquierda);
+    liberar_valor(derecha);
+    return resultado;
+}
+
+static CmdEsValor *operar_multiplicacion(CmdEsValor *izquierda, CmdEsValor *derecha) {
+    CmdEsValor *resultado;
+
+    if (izquierda == NULL || derecha == NULL) {
+        liberar_valor(izquierda);
+        liberar_valor(derecha);
+        return crear_valor_invalido();
+    }
+
+    if (izquierda->tipo == CMD_ES_TIPO_INVALIDO || derecha->tipo == CMD_ES_TIPO_INVALIDO) {
+        liberar_valor(izquierda);
+        liberar_valor(derecha);
+        return crear_valor_invalido();
+    }
+
+    if (!valor_es_numerico(izquierda) || !valor_es_numerico(derecha)) {
+        cmd_es_linea_invalida = 1;
+        fprintf(stderr, "Error semantico (linea %d): '*' solo admite numeros.\n", numero_linea_actual());
+        liberar_valor(izquierda);
+        liberar_valor(derecha);
+        return crear_valor_invalido();
+    }
+
+    if (izquierda->tipo == CMD_ES_TIPO_ENTERO && derecha->tipo == CMD_ES_TIPO_ENTERO) {
+        resultado = crear_valor_entero(izquierda->entero * derecha->entero);
+    } else {
+        resultado = crear_valor_decimal(valor_a_decimal(izquierda) * valor_a_decimal(derecha));
+    }
+
+    liberar_valor(izquierda);
+    liberar_valor(derecha);
+    return resultado;
+}
+
+static CmdEsValor *operar_division(CmdEsValor *izquierda, CmdEsValor *derecha) {
+    CmdEsValor *resultado;
+
+    if (izquierda == NULL || derecha == NULL) {
+        liberar_valor(izquierda);
+        liberar_valor(derecha);
+        return crear_valor_invalido();
+    }
+
+    if (izquierda->tipo == CMD_ES_TIPO_INVALIDO || derecha->tipo == CMD_ES_TIPO_INVALIDO) {
+        liberar_valor(izquierda);
+        liberar_valor(derecha);
+        return crear_valor_invalido();
+    }
+
+    if (!valor_es_numerico(izquierda) || !valor_es_numerico(derecha)) {
+        cmd_es_linea_invalida = 1;
+        fprintf(stderr, "Error semantico (linea %d): '/' solo admite numeros.\n", numero_linea_actual());
+        liberar_valor(izquierda);
+        liberar_valor(derecha);
+        return crear_valor_invalido();
+    }
+
+    if ((derecha->tipo == CMD_ES_TIPO_ENTERO && derecha->entero == 0)
+        || (derecha->tipo == CMD_ES_TIPO_DECIMAL && derecha->decimal == 0.0)) {
+        cmd_es_linea_invalida = 1;
+        fprintf(stderr, "Error semantico (linea %d): division entre cero.\n", numero_linea_actual());
+        liberar_valor(izquierda);
+        liberar_valor(derecha);
+        return crear_valor_invalido();
+    }
+
+    if (izquierda->tipo == CMD_ES_TIPO_ENTERO && derecha->tipo == CMD_ES_TIPO_ENTERO) {
+        resultado = crear_valor_entero(izquierda->entero / derecha->entero);
+    } else {
+        resultado = crear_valor_decimal(valor_a_decimal(izquierda) / valor_a_decimal(derecha));
+    }
+
+    liberar_valor(izquierda);
+    liberar_valor(derecha);
+    return resultado;
+}
+
+static CmdEsValor *operar_modulo(CmdEsValor *izquierda, CmdEsValor *derecha) {
+    CmdEsValor *resultado;
+
+    if (izquierda == NULL || derecha == NULL) {
+        liberar_valor(izquierda);
+        liberar_valor(derecha);
+        return crear_valor_invalido();
+    }
+
+    if (izquierda->tipo == CMD_ES_TIPO_INVALIDO || derecha->tipo == CMD_ES_TIPO_INVALIDO) {
+        liberar_valor(izquierda);
+        liberar_valor(derecha);
+        return crear_valor_invalido();
+    }
+
+    if (izquierda->tipo != CMD_ES_TIPO_ENTERO || derecha->tipo != CMD_ES_TIPO_ENTERO) {
+        cmd_es_linea_invalida = 1;
+        fprintf(stderr, "Error semantico (linea %d): '%%' solo admite enteros.\n", numero_linea_actual());
+        liberar_valor(izquierda);
+        liberar_valor(derecha);
+        return crear_valor_invalido();
+    }
+
+    if (derecha->entero == 0) {
+        cmd_es_linea_invalida = 1;
+        fprintf(stderr, "Error semantico (linea %d): modulo entre cero.\n", numero_linea_actual());
+        liberar_valor(izquierda);
+        liberar_valor(derecha);
+        return crear_valor_invalido();
+    }
+
+    resultado = crear_valor_entero(izquierda->entero % derecha->entero);
+    liberar_valor(izquierda);
+    liberar_valor(derecha);
+    return resultado;
+}
+
+static CmdEsValor *operar_igualdad(CmdEsValor *izquierda, CmdEsValor *derecha, int es_igualdad) {
+    int comparacion;
+
+    if (izquierda == NULL || derecha == NULL) {
+        liberar_valor(izquierda);
+        liberar_valor(derecha);
+        return crear_valor_invalido();
+    }
+
+    if (izquierda->tipo == CMD_ES_TIPO_INVALIDO || derecha->tipo == CMD_ES_TIPO_INVALIDO) {
+        liberar_valor(izquierda);
+        liberar_valor(derecha);
+        return crear_valor_invalido();
+    }
+
+    if (valor_es_numerico(izquierda) && valor_es_numerico(derecha)) {
+        comparacion = (valor_a_decimal(izquierda) == valor_a_decimal(derecha));
+    } else if (izquierda->tipo == CMD_ES_TIPO_CADENA && derecha->tipo == CMD_ES_TIPO_CADENA) {
+        comparacion = strcmp(izquierda->cadena != NULL ? izquierda->cadena : "",
+                             derecha->cadena != NULL ? derecha->cadena : "") == 0;
+    } else if (izquierda->tipo == CMD_ES_TIPO_BOOLEANO && derecha->tipo == CMD_ES_TIPO_BOOLEANO) {
+        comparacion = izquierda->booleano == derecha->booleano;
+    } else {
+        cmd_es_linea_invalida = 1;
+        fprintf(stderr, "Error semantico (linea %d): no se pueden comparar '%s' y '%s' con igualdad.\n",
+                numero_linea_actual(), nombre_tipo_dato(izquierda->tipo), nombre_tipo_dato(derecha->tipo));
+        liberar_valor(izquierda);
+        liberar_valor(derecha);
+        return crear_valor_invalido();
+    }
+
+    liberar_valor(izquierda);
+    liberar_valor(derecha);
+    return crear_valor_booleano(es_igualdad ? comparacion : !comparacion);
+}
+
+static CmdEsValor *operar_comparacion(CmdEsValor *izquierda, CmdEsValor *derecha, const char *operador) {
+    double valor_izquierda;
+    double valor_derecha;
+    int comparacion;
+
+    if (izquierda == NULL || derecha == NULL) {
+        liberar_valor(izquierda);
+        liberar_valor(derecha);
+        return crear_valor_invalido();
+    }
+
+    if (izquierda->tipo == CMD_ES_TIPO_INVALIDO || derecha->tipo == CMD_ES_TIPO_INVALIDO) {
+        liberar_valor(izquierda);
+        liberar_valor(derecha);
+        return crear_valor_invalido();
+    }
+
+    if (!valor_es_numerico(izquierda) || !valor_es_numerico(derecha)) {
+        cmd_es_linea_invalida = 1;
+        fprintf(stderr, "Error semantico (linea %d): '%s' solo admite numeros.\n", numero_linea_actual(), operador);
+        liberar_valor(izquierda);
+        liberar_valor(derecha);
+        return crear_valor_invalido();
+    }
+
+    valor_izquierda = valor_a_decimal(izquierda);
+    valor_derecha = valor_a_decimal(derecha);
+    comparacion = 0;
+
+    if (strcmp(operador, "<") == 0) {
+        comparacion = valor_izquierda < valor_derecha;
+    } else if (strcmp(operador, ">") == 0) {
+        comparacion = valor_izquierda > valor_derecha;
+    } else if (strcmp(operador, "<=") == 0) {
+        comparacion = valor_izquierda <= valor_derecha;
+    } else if (strcmp(operador, ">=") == 0) {
+        comparacion = valor_izquierda >= valor_derecha;
+    }
+
+    liberar_valor(izquierda);
+    liberar_valor(derecha);
+    return crear_valor_booleano(comparacion);
+}
+
+static CmdEsValor *operar_logico(CmdEsValor *izquierda, CmdEsValor *derecha, const char *operador) {
+    int resultado_booleano;
+
+    if (izquierda == NULL || derecha == NULL) {
+        liberar_valor(izquierda);
+        liberar_valor(derecha);
+        return crear_valor_invalido();
+    }
+
+    if (izquierda->tipo == CMD_ES_TIPO_INVALIDO || derecha->tipo == CMD_ES_TIPO_INVALIDO) {
+        liberar_valor(izquierda);
+        liberar_valor(derecha);
+        return crear_valor_invalido();
+    }
+
+    if (izquierda->tipo != CMD_ES_TIPO_BOOLEANO || derecha->tipo != CMD_ES_TIPO_BOOLEANO) {
+        cmd_es_linea_invalida = 1;
+        fprintf(stderr, "Error semantico (linea %d): '%s' solo admite booleanos.\n", numero_linea_actual(), operador);
+        liberar_valor(izquierda);
+        liberar_valor(derecha);
+        return crear_valor_invalido();
+    }
+
+    if (strcmp(operador, "Y") == 0) {
+        resultado_booleano = izquierda->booleano && derecha->booleano;
+    } else {
+        resultado_booleano = izquierda->booleano || derecha->booleano;
+    }
+
+    liberar_valor(izquierda);
+    liberar_valor(derecha);
+    return crear_valor_booleano(resultado_booleano);
+}
+
+static CmdEsValor *operar_negacion(CmdEsValor *valor) {
+    CmdEsValor *resultado;
+
+    if (valor == NULL) {
+        return crear_valor_invalido();
+    }
+
+    if (valor->tipo == CMD_ES_TIPO_INVALIDO) {
+        liberar_valor(valor);
+        return crear_valor_invalido();
+    }
+
+    if (valor->tipo != CMD_ES_TIPO_BOOLEANO) {
+        cmd_es_linea_invalida = 1;
+        fprintf(stderr, "Error semantico (linea %d): 'NO' solo admite booleanos.\n", numero_linea_actual());
+        liberar_valor(valor);
+        return crear_valor_invalido();
+    }
+
+    resultado = crear_valor_booleano(!valor->booleano);
+    liberar_valor(valor);
+    return resultado;
+}
+
+static CmdEsValor *operar_negativo(CmdEsValor *valor) {
+    CmdEsValor *resultado;
+
+    if (valor == NULL) {
+        return crear_valor_invalido();
+    }
+
+    if (valor->tipo == CMD_ES_TIPO_INVALIDO) {
+        liberar_valor(valor);
+        return crear_valor_invalido();
+    }
+
+    if (!valor_es_numerico(valor)) {
+        cmd_es_linea_invalida = 1;
+        fprintf(stderr, "Error semantico (linea %d): el signo negativo solo admite numeros.\n", numero_linea_actual());
+        liberar_valor(valor);
+        return crear_valor_invalido();
+    }
+
+    if (valor->tipo == CMD_ES_TIPO_ENTERO) {
+        resultado = crear_valor_entero(-valor->entero);
+    } else {
+        resultado = crear_valor_decimal(-valor->decimal);
+    }
+
+    liberar_valor(valor);
+    return resultado;
+}
+
+static int buscar_indice_variable_lenguaje(const char *nombre) {
+    int i;
+
+    for (i = 0; i < CMD_ES_MAX_VARIABLES_LENGUAJE; ++i) {
+        if (!cmd_es_variables_lenguaje[i].en_uso) {
+            continue;
+        }
+
+        if (strcmp(cmd_es_variables_lenguaje[i].nombre, nombre) == 0) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+static int guardar_variable_lenguaje(const char *nombre, CmdEsTipoDato tipo_dato, const CmdEsValor *valor) {
+    int indice;
+    int i;
+    CmdEsValor *valor_guardado;
+
+    if (!nombre_variable_valido(nombre)) {
+        cmd_es_linea_invalida = 1;
+        fprintf(stderr, "Error semantico (linea %d): identificador invalido: %s.\n", numero_linea_comando(), nombre);
+        return 0;
+    }
+
+    if (buscar_indice_variable_lenguaje(nombre) >= 0) {
+        cmd_es_linea_invalida = 1;
+        fprintf(stderr, "Error semantico (linea %d): la variable '%s' ya fue declarada.\n", numero_linea_comando(), nombre);
+        return 0;
+    }
+
+    indice = -1;
+
+    for (i = 0; i < CMD_ES_MAX_VARIABLES_LENGUAJE; ++i) {
+        if (!cmd_es_variables_lenguaje[i].en_uso) {
+            indice = i;
+            break;
+        }
+    }
+
+    if (indice < 0) {
+        cmd_es_linea_invalida = 1;
+        fprintf(stderr, "Error semantico (linea %d): no hay espacio para mas variables del lenguaje.\n", numero_linea_comando());
+        return 0;
+    }
+
+    if (valor == NULL) {
+        valor_guardado = crear_valor_por_defecto(tipo_dato);
+    } else {
+        valor_guardado = convertir_valor_a_tipo(tipo_dato, valor, nombre);
+    }
+
+    if (valor_guardado == NULL || valor_guardado->tipo == CMD_ES_TIPO_INVALIDO) {
+        liberar_valor(valor_guardado);
+        return 0;
+    }
+
+    if (!guardar_texto_limitado(nombre, cmd_es_variables_lenguaje[indice].nombre, sizeof(cmd_es_variables_lenguaje[indice].nombre))) {
+        cmd_es_linea_invalida = 1;
+        fprintf(stderr, "Error semantico (linea %d): identificador demasiado largo: %s.\n", numero_linea_comando(), nombre);
+        liberar_valor(valor_guardado);
+        return 0;
+    }
+
+    cmd_es_variables_lenguaje[indice].en_uso = 1;
+    cmd_es_variables_lenguaje[indice].tipo = tipo_dato;
+    cmd_es_variables_lenguaje[indice].valor = valor_guardado;
+    return 1;
+}
+
+static int asignar_variable_lenguaje(const char *nombre, const CmdEsValor *valor) {
+    int indice;
+    CmdEsValor *valor_guardado;
+
+    indice = buscar_indice_variable_lenguaje(nombre);
+
+    if (indice < 0) {
+        cmd_es_linea_invalida = 1;
+        fprintf(stderr, "Error semantico (linea %d): la variable '%s' no ha sido declarada.\n", numero_linea_comando(), nombre);
+        return 0;
+    }
+
+    valor_guardado = convertir_valor_a_tipo(cmd_es_variables_lenguaje[indice].tipo, valor, nombre);
+
+    if (valor_guardado == NULL || valor_guardado->tipo == CMD_ES_TIPO_INVALIDO) {
+        liberar_valor(valor_guardado);
+        return 0;
+    }
+
+    liberar_valor(cmd_es_variables_lenguaje[indice].valor);
+    cmd_es_variables_lenguaje[indice].valor = valor_guardado;
+    return 1;
+}
+
+static CmdEsValor *convertir_valor_a_tipo(CmdEsTipoDato tipo_dato, const CmdEsValor *valor, const char *identificador) {
+    if (valor == NULL) {
+        return crear_valor_invalido();
+    }
+
+    if (valor->tipo == CMD_ES_TIPO_INVALIDO) {
+        return crear_valor_invalido();
+    }
+
+    switch (tipo_dato) {
+        case CMD_ES_TIPO_ENTERO:
+            if (valor->tipo == CMD_ES_TIPO_ENTERO) {
+                return copiar_valor_lenguaje(valor);
+            }
+            break;
+        case CMD_ES_TIPO_DECIMAL:
+            if (valor->tipo == CMD_ES_TIPO_DECIMAL) {
+                return copiar_valor_lenguaje(valor);
+            }
+            if (valor->tipo == CMD_ES_TIPO_ENTERO) {
+                return crear_valor_decimal((double)valor->entero);
+            }
+            break;
+        case CMD_ES_TIPO_CADENA:
+            if (valor->tipo == CMD_ES_TIPO_CADENA) {
+                return copiar_valor_lenguaje(valor);
+            }
+            break;
+        case CMD_ES_TIPO_BOOLEANO:
+            if (valor->tipo == CMD_ES_TIPO_BOOLEANO) {
+                return copiar_valor_lenguaje(valor);
+            }
+            break;
+        default:
+            break;
+    }
+
+    cmd_es_linea_invalida = 1;
+    fprintf(stderr, "Error semantico (linea %d): no se puede asignar un valor de tipo %s a '%s' de tipo %s.\n",
+            numero_linea_comando(), nombre_tipo_dato(valor->tipo), identificador, nombre_tipo_dato(tipo_dato));
+    return crear_valor_invalido();
+}
+
+static const char *nombre_tipo_dato(CmdEsTipoDato tipo_dato) {
+    switch (tipo_dato) {
+        case CMD_ES_TIPO_ENTERO:
+            return "entero";
+        case CMD_ES_TIPO_DECIMAL:
+            return "decimal";
+        case CMD_ES_TIPO_CADENA:
+            return "cadena";
+        case CMD_ES_TIPO_BOOLEANO:
+            return "booleano";
+        default:
+            return "invalido";
+    }
+}
+
+static void imprimir_valor_lenguaje(const CmdEsValor *valor) {
+    if (valor == NULL) {
+        return;
+    }
+
+    switch (valor->tipo) {
+        case CMD_ES_TIPO_ENTERO:
+            printf("%ld\n", valor->entero);
+            break;
+        case CMD_ES_TIPO_DECIMAL:
+            printf("%.15g\n", valor->decimal);
+            break;
+        case CMD_ES_TIPO_CADENA:
+            printf("%s\n", valor->cadena != NULL ? valor->cadena : "");
+            break;
+        case CMD_ES_TIPO_BOOLEANO:
+            printf("%s\n", valor->booleano ? "verdadero" : "falso");
+            break;
+        default:
+            printf("[valor invalido]\n");
+            break;
+    }
+}
+
+static int valor_es_numerico(const CmdEsValor *valor) {
+    return valor != NULL && (valor->tipo == CMD_ES_TIPO_ENTERO || valor->tipo == CMD_ES_TIPO_DECIMAL);
+}
+
+static double valor_a_decimal(const CmdEsValor *valor) {
+    if (valor->tipo == CMD_ES_TIPO_DECIMAL) {
+        return valor->decimal;
+    }
+
+    return (double)valor->entero;
+}
+
 static void mostrar_ayuda(void) {
-    printf("AYUDA: Comandos disponibles: AYUDA, VERSION, FECHA, HORA, LIMPIAR, LISTAR, ECO <texto>, PAUSA, TITULO <texto>, COLOR <codigo>, ARBOL, BUSCAR <texto> <archivo>, BUSCAR_TEXTO <texto> <archivo>, MAS <archivo>, ORDENAR <archivo>, COMPARAR <archivo1> <archivo2>, SIMBOLO <texto>, RUTA [texto], DEFINIR [nombre | nombre=valor], CAMBIAR_DIR <nombre | . | ..>, CREAR_DIR <nombre>, ELIMINAR_DIR <nombre>, MOSTRAR <archivo>, ELIMINAR <archivo>, RENOMBRAR <origen> <destino>, COPIAR <origen> <destino>, MOVER <origen> <destino>, SALIR\n");
+    printf("AYUDA: Comandos disponibles: AYUDA, VERSION, FECHA, HORA, LIMPIAR, LISTAR, ECO <texto>, PAUSA, TITULO <texto>, COLOR <codigo>, ARBOL, BUSCAR <texto> <archivo>, BUSCAR_TEXTO <texto> <archivo>, MAS <archivo>, ORDENAR <archivo>, COMPARAR <archivo1> <archivo2>, SIMBOLO <texto>, RUTA [texto], DEFINIR [nombre | nombre=valor], CAMBIAR_DIR <nombre | . | ..>, CREAR_DIR <nombre>, ELIMINAR_DIR <nombre>, MOSTRAR <archivo>, ELIMINAR <archivo>, RENOMBRAR <origen> <destino>, COPIAR <origen> <destino>, MOVER <origen> <destino>, lenguaje: var <tipo> <id> [= expresion];, <id> = expresion;, imprimir(expresion);, SALIR\n");
 }
 
 static void inicializar_entorno_interno(void) {
@@ -1278,6 +2186,14 @@ static const char *descripcion_error_operacion(int codigo_error) {
         default:
             return strerror(codigo_error);
     }
+}
+
+static int numero_linea_actual(void) {
+    if (yylineno > 0) {
+        return yylineno;
+    }
+
+    return 1;
 }
 
 static int numero_linea_comando(void) {
