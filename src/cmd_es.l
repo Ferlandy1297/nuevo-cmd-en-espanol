@@ -6,7 +6,10 @@
 %x ESTADO_TEXTO ESTADO_COLOR ESTADO_NOMBRE
 
 %{
+typedef struct CmdEsArgumentoExpresion CmdEsArgumentoExpresion;
 typedef struct CmdEsExpresion CmdEsExpresion;
+typedef struct CmdEsParametroFuncion CmdEsParametroFuncion;
+typedef struct CmdEsSufijoLlamada CmdEsSufijoLlamada;
 typedef struct CmdEsValor CmdEsValor;
 typedef struct CmdEsSentenciaLenguaje CmdEsSentenciaLenguaje;
 
@@ -63,6 +66,8 @@ PARA_K              [Pp][Aa][Rr][Aa]
 HASTA_K             [Hh][Aa][Ss][Tt][Aa]
 ROMPER_K            [Rr][Oo][Mm][Pp][Ee][Rr]
 CONTINUAR_K         [Cc][Oo][Nn][Tt][Ii][Nn][Uu][Aa][Rr]
+FUNCION_K           [Ff][Uu][Nn][Cc][Ii][Oo][Nn]
+RETORNAR_K          [Rr][Ee][Tt][Oo][Rr][Nn][Aa][Rr]
 VERDADERO_K         [Vv][Ee][Rr][Dd][Aa][Dd][Ee][Rr][Oo]
 FALSO_K             [Ff][Aa][Ll][Ss][Oo]
 Y_K                 [Yy]
@@ -119,6 +124,8 @@ NOMBRE_ARG          [^ \t\r\n]+
 <INITIAL>{HASTA_K}               return HASTA;
 <INITIAL>{ROMPER_K}              return ROMPER;
 <INITIAL>{CONTINUAR_K}           return CONTINUAR;
+<INITIAL>{FUNCION_K}             return FUNCION;
+<INITIAL>{RETORNAR_K}            return RETORNAR;
 <INITIAL>{VERDADERO_K}           return VERDADERO;
 <INITIAL>{FALSO_K}               return FALSO;
 <INITIAL>{NO_K}                  return NO;
@@ -145,6 +152,7 @@ NOMBRE_ARG          [^ \t\r\n]+
                             return IDENTIFICADOR;
                         }
 <INITIAL>";"                     return ';';
+<INITIAL>","                     return ',';
 <INITIAL>"("                     return '(';
 <INITIAL>")"                     return ')';
 <INITIAL>"{"                     return '{';

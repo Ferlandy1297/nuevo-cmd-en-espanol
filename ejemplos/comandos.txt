@@ -1,11 +1,18 @@
 VERSION
 LISTAR
+funcion entero doble(entero n) { retornar n * 2; }
+funcion cadena saludar(cadena persona) { retornar persona; }
+funcion booleano es_grande(entero numero) { retornar numero > 5; }
 var entero x = 10;
 var decimal pi = 3.14;
 var cadena nombre = "Ferlandy";
 var booleano activo = verdadero;
+var entero resultado = doble(5);
 imprimir(x);
-si (x > 5) { imprimir("grande"); }
+imprimir(resultado);
+imprimir(doble(3));
+imprimir(saludar("Ferlandy"));
+si (es_grande(x)) { imprimir("grande"); }
 si (x > 20) { imprimir("alto"); } sino { imprimir("normal"); }
 mientras (x < 15) { imprimir(x); x = x + 1; }
 para i = 1 hasta 3 { imprimir(i); }

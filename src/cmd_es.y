@@ -16,6 +16,9 @@ int cmd_es_linea_invalida;
 
 #define CMD_ES_MAX_VARIABLES 32
 #define CMD_ES_MAX_VARIABLES_LENGUAJE 64
+#define CMD_ES_MAX_FUNCIONES_LENGUAJE 32
+#define CMD_ES_MAX_PARAMETROS_FUNCION 16
+#define CMD_ES_MAX_PROFUNDIDAD_LLAMADAS 16
 #define CMD_ES_MAX_NOMBRE_VARIABLE 64
 #define CMD_ES_MAX_VALOR_VARIABLE 256
 #define CMD_ES_MAX_TEXTO_INTERNO MAX_PATH
@@ -35,6 +38,22 @@ typedef struct CmdEsValor {
     int booleano;
     char *cadena;
 } CmdEsValor;
+
+typedef struct CmdEsArgumentoExpresion {
+    struct CmdEsExpresion *expresion;
+    struct CmdEsArgumentoExpresion *siguiente;
+} CmdEsArgumentoExpresion;
+
+typedef struct CmdEsParametroFuncion {
+    CmdEsTipoDato tipo;
+    char *nombre;
+    struct CmdEsParametroFuncion *siguiente;
+} CmdEsParametroFuncion;
+
+typedef struct CmdEsSufijoLlamada {
+    int es_llamada;
+    CmdEsArgumentoExpresion *argumentos;
+} CmdEsSufijoLlamada;
 
 typedef enum {
     CMD_ES_OPERADOR_SUMA = 1,
@@ -58,7 +77,8 @@ typedef enum {
     CMD_ES_EXPRESION_LITERAL = 1,
     CMD_ES_EXPRESION_IDENTIFICADOR,
     CMD_ES_EXPRESION_UNARIA,
-    CMD_ES_EXPRESION_BINARIA
+    CMD_ES_EXPRESION_BINARIA,
+    CMD_ES_EXPRESION_LLAMADA
 } CmdEsTipoExpresion;
 
 typedef struct CmdEsExpresion {
@@ -71,6 +91,7 @@ typedef struct CmdEsExpresion {
     char *texto;
     struct CmdEsExpresion *izquierda;
     struct CmdEsExpresion *derecha;
+    CmdEsArgumentoExpresion *argumentos;
 } CmdEsExpresion;
 
 typedef enum {
@@ -81,7 +102,9 @@ typedef enum {
     CMD_ES_SENTENCIA_MIENTRAS,
     CMD_ES_SENTENCIA_PARA,
     CMD_ES_SENTENCIA_ROMPER,
-    CMD_ES_SENTENCIA_CONTINUAR
+    CMD_ES_SENTENCIA_CONTINUAR,
+    CMD_ES_SENTENCIA_FUNCION,
+    CMD_ES_SENTENCIA_RETORNAR
 } CmdEsTipoSentenciaLenguaje;
 
 typedef struct CmdEsSentenciaLenguaje {
@@ -93,12 +116,14 @@ typedef struct CmdEsSentenciaLenguaje {
     CmdEsExpresion *expresion_secundaria;
     struct CmdEsSentenciaLenguaje *bloque_principal;
     struct CmdEsSentenciaLenguaje *bloque_secundario;
+    CmdEsParametroFuncion *parametros;
 } CmdEsSentenciaLenguaje;
 
 typedef enum {
     CMD_ES_RESULTADO_NORMAL = 0,
     CMD_ES_RESULTADO_ROMPER,
     CMD_ES_RESULTADO_CONTINUAR,
+    CMD_ES_RESULTADO_RETORNAR,
     CMD_ES_RESULTADO_ERROR
 } CmdEsResultadoEjecucion;
 
@@ -115,19 +140,47 @@ typedef struct {
     CmdEsValor *valor;
 } CmdEsVariableLenguaje;
 
+typedef struct {
+    int en_uso;
+    char nombre[CMD_ES_MAX_NOMBRE_VARIABLE];
+    CmdEsTipoDato tipo_retorno;
+    CmdEsParametroFuncion *parametros;
+    CmdEsSentenciaLenguaje *cuerpo;
+    int en_ejecucion;
+} CmdEsFuncionLenguaje;
+
+typedef struct {
+    CmdEsVariableLenguaje variables[CMD_ES_MAX_VARIABLES_LENGUAJE];
+    CmdEsFuncionLenguaje *funcion;
+    CmdEsValor *valor_retorno;
+} CmdEsMarcoLlamada;
+
 static char cmd_es_simbolo_actual[CMD_ES_MAX_TEXTO_INTERNO] = "CMD-ES>";
 static char cmd_es_ruta_actual[CMD_ES_MAX_TEXTO_INTERNO];
 static int cmd_es_ruta_inicializada;
 static CmdEsVariableInterna cmd_es_variables[CMD_ES_MAX_VARIABLES];
 static CmdEsVariableLenguaje cmd_es_variables_lenguaje[CMD_ES_MAX_VARIABLES_LENGUAJE];
+static CmdEsFuncionLenguaje cmd_es_funciones_lenguaje[CMD_ES_MAX_FUNCIONES_LENGUAJE];
+static CmdEsMarcoLlamada cmd_es_pila_llamadas[CMD_ES_MAX_PROFUNDIDAD_LLAMADAS];
+static int cmd_es_profundidad_llamadas;
 
 static void mostrar_ayuda(void);
 static void inicializar_entorno_interno(void);
+static CmdEsArgumentoExpresion *crear_argumento_expresion(CmdEsExpresion *expresion);
+static CmdEsArgumentoExpresion *anexar_argumento_expresion(CmdEsArgumentoExpresion *lista, CmdEsArgumentoExpresion *argumento);
+static void liberar_argumentos_expresion(CmdEsArgumentoExpresion *argumentos);
+static CmdEsParametroFuncion *crear_parametro_funcion(CmdEsTipoDato tipo, char *nombre);
+static CmdEsParametroFuncion *anexar_parametro_funcion(CmdEsParametroFuncion *lista, CmdEsParametroFuncion *parametro);
+static void liberar_parametros_funcion(CmdEsParametroFuncion *parametros);
+static CmdEsSufijoLlamada *crear_sufijo_identificador(void);
+static CmdEsSufijoLlamada *crear_sufijo_llamada(CmdEsArgumentoExpresion *argumentos);
+static void liberar_sufijo_llamada(CmdEsSufijoLlamada *sufijo);
 static CmdEsExpresion *crear_expresion_literal_entero(long numero);
 static CmdEsExpresion *crear_expresion_literal_decimal(double numero);
 static CmdEsExpresion *crear_expresion_literal_cadena(char *texto);
 static CmdEsExpresion *crear_expresion_literal_booleana(int valor);
 static CmdEsExpresion *crear_expresion_identificador(char *identificador);
+static CmdEsExpresion *crear_expresion_llamada(char *identificador, CmdEsArgumentoExpresion *argumentos);
 static CmdEsExpresion *crear_expresion_unaria(CmdEsOperador operador, CmdEsExpresion *expresion);
 static CmdEsExpresion *crear_expresion_binaria(CmdEsOperador operador, CmdEsExpresion *izquierda, CmdEsExpresion *derecha);
 static void liberar_expresion(CmdEsExpresion *expresion);
@@ -138,11 +191,13 @@ static CmdEsSentenciaLenguaje *crear_sentencia_impresion(CmdEsExpresion *expresi
 static CmdEsSentenciaLenguaje *crear_sentencia_si(CmdEsExpresion *condicion, CmdEsSentenciaLenguaje *bloque_principal, CmdEsSentenciaLenguaje *bloque_secundario);
 static CmdEsSentenciaLenguaje *crear_sentencia_mientras(CmdEsExpresion *condicion, CmdEsSentenciaLenguaje *bloque_principal);
 static CmdEsSentenciaLenguaje *crear_sentencia_para(char *identificador, CmdEsExpresion *inicio, CmdEsExpresion *limite, CmdEsSentenciaLenguaje *bloque_principal);
+static CmdEsSentenciaLenguaje *crear_sentencia_funcion(CmdEsTipoDato tipo_dato, char *identificador, CmdEsParametroFuncion *parametros, CmdEsSentenciaLenguaje *bloque_principal);
+static CmdEsSentenciaLenguaje *crear_sentencia_retornar(CmdEsExpresion *expresion);
 static CmdEsSentenciaLenguaje *crear_sentencia_romper(void);
 static CmdEsSentenciaLenguaje *crear_sentencia_continuar(void);
 static CmdEsSentenciaLenguaje *anexar_sentencia(CmdEsSentenciaLenguaje *lista, CmdEsSentenciaLenguaje *sentencia);
 static void liberar_sentencia_lenguaje(CmdEsSentenciaLenguaje *sentencia);
-static int validar_sentencia_lenguaje(const CmdEsSentenciaLenguaje *sentencia, int profundidad_ciclo);
+static int validar_sentencia_lenguaje(const CmdEsSentenciaLenguaje *sentencia, int profundidad_ciclo, int dentro_funcion);
 static CmdEsResultadoEjecucion ejecutar_sentencia_lenguaje(CmdEsSentenciaLenguaje *sentencia);
 static CmdEsResultadoEjecucion ejecutar_sentencia_individual(CmdEsSentenciaLenguaje *sentencia);
 static CmdEsValor *crear_valor_invalido(void);
@@ -164,10 +219,16 @@ static CmdEsValor *operar_comparacion(CmdEsValor *izquierda, CmdEsValor *derecha
 static CmdEsValor *operar_logico(CmdEsValor *izquierda, CmdEsValor *derecha, const char *operador);
 static CmdEsValor *operar_negacion(CmdEsValor *valor);
 static CmdEsValor *operar_negativo(CmdEsValor *valor);
+static int buscar_indice_funcion_lenguaje(const char *nombre);
 static int buscar_indice_variable_lenguaje(const char *nombre);
 static int guardar_variable_lenguaje(const char *nombre, CmdEsTipoDato tipo_dato, const CmdEsValor *valor);
 static int asignar_variable_lenguaje(const char *nombre, const CmdEsValor *valor);
 static int asignar_variable_control_para(const char *nombre, const CmdEsValor *valor);
+static int registrar_funcion_lenguaje(CmdEsSentenciaLenguaje *sentencia);
+static CmdEsValor *ejecutar_llamada_funcion(const char *nombre, CmdEsArgumentoExpresion *argumentos);
+static CmdEsMarcoLlamada *marco_llamada_actual(void);
+static int buscar_indice_variable_local(const CmdEsMarcoLlamada *marco, const char *nombre);
+static void limpiar_variables_marco(CmdEsMarcoLlamada *marco);
 static CmdEsValor *convertir_valor_a_tipo(CmdEsTipoDato tipo_dato, const CmdEsValor *valor, const char *identificador);
 static const char *nombre_tipo_dato(CmdEsTipoDato tipo_dato);
 static void imprimir_valor_lenguaje(const CmdEsValor *valor);
@@ -229,11 +290,14 @@ static void reiniciar_estado_linea(void);
     int tipo_dato;
     CmdEsExpresion *expresion;
     CmdEsSentenciaLenguaje *sentencia;
+    CmdEsArgumentoExpresion *argumentos;
+    CmdEsParametroFuncion *parametros;
+    CmdEsSufijoLlamada *sufijo_llamada;
 }
 
 %token AYUDA VERSION SALIR LIMPIAR FECHA HORA
 %token LISTAR ECO PAUSA TITULO COLOR ARBOL BUSCAR BUSCAR_TEXTO MAS ORDENAR COMPARAR SIMBOLO RUTA DEFINIR CAMBIAR_DIR CREAR_DIR ELIMINAR_DIR MOSTRAR ELIMINAR RENOMBRAR COPIAR MOVER
-%token VAR TIPO_ENTERO TIPO_DECIMAL TIPO_CADENA TIPO_BOOLEANO IMPRIMIR SI SINO MIENTRAS PARA HASTA ROMPER CONTINUAR VERDADERO FALSO
+%token VAR TIPO_ENTERO TIPO_DECIMAL TIPO_CADENA TIPO_BOOLEANO IMPRIMIR SI SINO MIENTRAS PARA HASTA ROMPER CONTINUAR FUNCION RETORNAR VERDADERO FALSO
 %token IGUAL_IGUAL DIFERENTE MENOR_IGUAL MAYOR_IGUAL Y O NO
 %token PUNTO PUNTO_PUNTO
 %token NEWLINE
@@ -242,12 +306,18 @@ static void reiniciar_estado_linea(void);
 %token <decimal> LITERAL_DECIMAL
 
 %type <tipo_dato> tipo_lenguaje
-%type <expresion> expresion
+%type <expresion> expresion expresion_primaria
 %type <sentencia> sentencia_lenguaje sentencia_simple sentencia_control bloque lista_sentencias
+%type <parametros> parametro lista_parametros opt_parametros
+%type <argumentos> argumento lista_argumentos opt_argumentos
+%type <sufijo_llamada> sufijo_llamada_opt
 
 %destructor { free($$); } NOMBRE TEXTO IDENTIFICADOR LITERAL_CADENA
-%destructor { liberar_expresion($$); } expresion
+%destructor { liberar_expresion($$); } expresion expresion_primaria
 %destructor { liberar_sentencia_lenguaje($$); } sentencia_lenguaje sentencia_simple sentencia_control bloque lista_sentencias
+%destructor { liberar_parametros_funcion($$); } parametro lista_parametros opt_parametros
+%destructor { liberar_argumentos_expresion($$); } argumento lista_argumentos opt_argumentos
+%destructor { liberar_sufijo_llamada($$); } sufijo_llamada_opt
 
 /* Nota: Los comandos se reconocen sin diferenciar mayusculas/minusculas
    (ver reglas del lexer). */
@@ -339,7 +409,7 @@ linea_shell
 linea_lenguaje
     : sentencia_lenguaje NEWLINE {
             if (!cmd_es_linea_invalida) {
-                if (validar_sentencia_lenguaje($1, 0)) {
+                if (validar_sentencia_lenguaje($1, 0, 0)) {
                     ejecutar_sentencia_lenguaje($1);
                 }
             }
@@ -365,6 +435,7 @@ sentencia_simple
     | VAR tipo_lenguaje IDENTIFICADOR '=' expresion { $$ = crear_sentencia_declaracion($2, $3, $5); }
     | IDENTIFICADOR '=' expresion                { $$ = crear_sentencia_asignacion($1, $3); }
     | IMPRIMIR '(' expresion ')'                 { $$ = crear_sentencia_impresion($3); }
+    | RETORNAR expresion                         { $$ = crear_sentencia_retornar($2); }
     | ROMPER                                     { $$ = crear_sentencia_romper(); }
     | CONTINUAR                                  { $$ = crear_sentencia_continuar(); }
     ;
@@ -374,6 +445,7 @@ sentencia_control
     | SI '(' expresion ')' bloque SINO bloque    { $$ = crear_sentencia_si($3, $5, $7); }
     | MIENTRAS '(' expresion ')' bloque          { $$ = crear_sentencia_mientras($3, $5); }
     | PARA IDENTIFICADOR '=' expresion HASTA expresion bloque { $$ = crear_sentencia_para($2, $4, $6, $7); }
+    | FUNCION tipo_lenguaje IDENTIFICADOR '(' opt_parametros ')' bloque { $$ = crear_sentencia_funcion($2, $3, $5, $7); }
     ;
 
 bloque
@@ -385,6 +457,34 @@ lista_sentencias
     | lista_sentencias sentencia_lenguaje        { $$ = anexar_sentencia($1, $2); }
     ;
 
+opt_parametros
+    : /* vacio */                                { $$ = NULL; }
+    | lista_parametros                           { $$ = $1; }
+    ;
+
+lista_parametros
+    : parametro                                  { $$ = $1; }
+    | lista_parametros ',' parametro             { $$ = anexar_parametro_funcion($1, $3); }
+    ;
+
+parametro
+    : tipo_lenguaje IDENTIFICADOR                { $$ = crear_parametro_funcion((CmdEsTipoDato)$1, $2); }
+    ;
+
+opt_argumentos
+    : /* vacio */                                { $$ = NULL; }
+    | lista_argumentos                           { $$ = $1; }
+    ;
+
+lista_argumentos
+    : argumento                                  { $$ = $1; }
+    | lista_argumentos ',' argumento             { $$ = anexar_argumento_expresion($1, $3); }
+    ;
+
+argumento
+    : expresion                                  { $$ = crear_argumento_expresion($1); }
+    ;
+
 tipo_lenguaje
     : TIPO_ENTERO     { $$ = CMD_ES_TIPO_ENTERO; }
     | TIPO_DECIMAL    { $$ = CMD_ES_TIPO_DECIMAL; }
@@ -393,13 +493,7 @@ tipo_lenguaje
     ;
 
 expresion
-    : LITERAL_ENTERO               { $$ = crear_expresion_literal_entero($1); }
-    | LITERAL_DECIMAL              { $$ = crear_expresion_literal_decimal($1); }
-    | LITERAL_CADENA               { $$ = crear_expresion_literal_cadena($1); }
-    | VERDADERO                    { $$ = crear_expresion_literal_booleana(1); }
-    | FALSO                        { $$ = crear_expresion_literal_booleana(0); }
-    | IDENTIFICADOR                { $$ = crear_expresion_identificador($1); }
-    | '(' expresion ')'            { $$ = $2; }
+    : expresion_primaria           { $$ = $1; }
     | '-' expresion %prec UMINUS   { $$ = crear_expresion_unaria(CMD_ES_OPERADOR_NEGATIVO, $2); }
     | NO expresion                 { $$ = crear_expresion_unaria(CMD_ES_OPERADOR_NO, $2); }
     | expresion '+' expresion      { $$ = crear_expresion_binaria(CMD_ES_OPERADOR_SUMA, $1, $3); }
@@ -415,6 +509,29 @@ expresion
     | expresion MAYOR_IGUAL expresion { $$ = crear_expresion_binaria(CMD_ES_OPERADOR_MAYOR_IGUAL, $1, $3); }
     | expresion Y expresion        { $$ = crear_expresion_binaria(CMD_ES_OPERADOR_Y, $1, $3); }
     | expresion O expresion        { $$ = crear_expresion_binaria(CMD_ES_OPERADOR_O, $1, $3); }
+    ;
+
+expresion_primaria
+    : LITERAL_ENTERO               { $$ = crear_expresion_literal_entero($1); }
+    | LITERAL_DECIMAL              { $$ = crear_expresion_literal_decimal($1); }
+    | LITERAL_CADENA               { $$ = crear_expresion_literal_cadena($1); }
+    | VERDADERO                    { $$ = crear_expresion_literal_booleana(1); }
+    | FALSO                        { $$ = crear_expresion_literal_booleana(0); }
+    | IDENTIFICADOR sufijo_llamada_opt {
+            if ($2 != NULL && $2->es_llamada) {
+                $$ = crear_expresion_llamada($1, $2->argumentos);
+                $2->argumentos = NULL;
+            } else {
+                $$ = crear_expresion_identificador($1);
+            }
+            liberar_sufijo_llamada($2);
+        }
+    | '(' expresion ')'            { $$ = $2; }
+    ;
+
+sufijo_llamada_opt
+    : /* vacio */                  { $$ = crear_sufijo_identificador(); }
+    | '(' opt_argumentos ')'       { $$ = crear_sufijo_llamada($2); }
     ;
 %%
 
@@ -436,6 +553,135 @@ static CmdEsValor *crear_valor_simple(CmdEsTipoDato tipo_dato) {
     return valor;
 }
 
+static CmdEsArgumentoExpresion *crear_argumento_expresion(CmdEsExpresion *expresion) {
+    CmdEsArgumentoExpresion *argumento;
+
+    argumento = (CmdEsArgumentoExpresion *)malloc(sizeof(CmdEsArgumentoExpresion));
+
+    if (argumento == NULL) {
+        fprintf(stderr, "Error: memoria insuficiente.\n");
+        exit(1);
+    }
+
+    argumento->expresion = expresion;
+    argumento->siguiente = NULL;
+    return argumento;
+}
+
+static CmdEsArgumentoExpresion *anexar_argumento_expresion(CmdEsArgumentoExpresion *lista, CmdEsArgumentoExpresion *argumento) {
+    CmdEsArgumentoExpresion *actual;
+
+    if (lista == NULL) {
+        return argumento;
+    }
+
+    actual = lista;
+
+    while (actual->siguiente != NULL) {
+        actual = actual->siguiente;
+    }
+
+    actual->siguiente = argumento;
+    return lista;
+}
+
+static void liberar_argumentos_expresion(CmdEsArgumentoExpresion *argumentos) {
+    while (argumentos != NULL) {
+        CmdEsArgumentoExpresion *siguiente;
+
+        siguiente = argumentos->siguiente;
+        liberar_expresion(argumentos->expresion);
+        free(argumentos);
+        argumentos = siguiente;
+    }
+}
+
+static CmdEsParametroFuncion *crear_parametro_funcion(CmdEsTipoDato tipo, char *nombre) {
+    CmdEsParametroFuncion *parametro;
+
+    parametro = (CmdEsParametroFuncion *)malloc(sizeof(CmdEsParametroFuncion));
+
+    if (parametro == NULL) {
+        fprintf(stderr, "Error: memoria insuficiente.\n");
+        exit(1);
+    }
+
+    parametro->tipo = tipo;
+    parametro->nombre = nombre;
+    parametro->siguiente = NULL;
+    return parametro;
+}
+
+static CmdEsParametroFuncion *anexar_parametro_funcion(CmdEsParametroFuncion *lista, CmdEsParametroFuncion *parametro) {
+    CmdEsParametroFuncion *actual;
+
+    if (lista == NULL) {
+        return parametro;
+    }
+
+    actual = lista;
+
+    while (actual->siguiente != NULL) {
+        actual = actual->siguiente;
+    }
+
+    actual->siguiente = parametro;
+    return lista;
+}
+
+static void liberar_parametros_funcion(CmdEsParametroFuncion *parametros) {
+    while (parametros != NULL) {
+        CmdEsParametroFuncion *siguiente;
+
+        siguiente = parametros->siguiente;
+        free(parametros->nombre);
+        free(parametros);
+        parametros = siguiente;
+    }
+}
+
+static CmdEsSufijoLlamada *crear_sufijo_identificador(void) {
+    CmdEsSufijoLlamada *sufijo;
+
+    sufijo = (CmdEsSufijoLlamada *)malloc(sizeof(CmdEsSufijoLlamada));
+
+    if (sufijo == NULL) {
+        fprintf(stderr, "Error: memoria insuficiente.\n");
+        exit(1);
+    }
+
+    sufijo->es_llamada = 0;
+    sufijo->argumentos = NULL;
+    return sufijo;
+}
+
+static CmdEsSufijoLlamada *crear_sufijo_llamada(CmdEsArgumentoExpresion *argumentos) {
+    CmdEsSufijoLlamada *sufijo;
+
+    sufijo = (CmdEsSufijoLlamada *)malloc(sizeof(CmdEsSufijoLlamada));
+
+    if (sufijo == NULL) {
+        fprintf(stderr, "Error: memoria insuficiente.\n");
+        exit(1);
+    }
+
+    sufijo->es_llamada = 1;
+    sufijo->argumentos = argumentos;
+    return sufijo;
+}
+
+static void liberar_sufijo_llamada(CmdEsSufijoLlamada *sufijo) {
+    if (sufijo == NULL) {
+        return;
+    }
+
+    if (sufijo->argumentos != NULL) {
+        liberar_argumentos_expresion(sufijo->argumentos);
+    }
+
+    free(sufijo);
+}
+
 static CmdEsExpresion *crear_expresion_simple(CmdEsTipoExpresion tipo_expresion) {
     CmdEsExpresion *expresion;
 
@@ -455,6 +701,7 @@ static CmdEsExpresion *crear_expresion_simple(CmdEsTipoExpresion tipo_expresion)
     expresion->texto = NULL;
     expresion->izquierda = NULL;
     expresion->derecha = NULL;
+    expresion->argumentos = NULL;
     return expresion;
 }
 
@@ -502,6 +749,15 @@ static CmdEsExpresion *crear_expresion_identificador(char *identificador) {
     return expresion;
 }
 
+static CmdEsExpresion *crear_expresion_llamada(char *identificador, CmdEsArgumentoExpresion *argumentos) {
+    CmdEsExpresion *expresion;
+
+    expresion = crear_expresion_simple(CMD_ES_EXPRESION_LLAMADA);
+    expresion->texto = identificador;
+    expresion->argumentos = argumentos;
+    return expresion;
+}
+
 static CmdEsExpresion *crear_expresion_unaria(CmdEsOperador operador, CmdEsExpresion *expresion_hija) {
     CmdEsExpresion *expresion;
 
@@ -528,6 +784,7 @@ static void liberar_expresion(CmdEsExpresion *expresion) {
 
     liberar_expresion(expresion->izquierda);
     liberar_expresion(expresion->derecha);
+    liberar_argumentos_expresion(expresion->argumentos);
     free(expresion->texto);
     free(expresion);
 }
@@ -556,6 +813,8 @@ static CmdEsValor *evaluar_expresion(const CmdEsExpresion *expresion) {
             }
         case CMD_ES_EXPRESION_IDENTIFICADOR:
             return obtener_valor_identificador(expresion->texto != NULL ? expresion->texto : "");
+        case CMD_ES_EXPRESION_LLAMADA:
+            return ejecutar_llamada_funcion(expresion->texto != NULL ? expresion->texto : "", expresion->argumentos);
         case CMD_ES_EXPRESION_UNARIA:
             izquierda = evaluar_expresion(expresion->izquierda);
 
@@ -628,6 +887,7 @@ static CmdEsSentenciaLenguaje *crear_sentencia_simple(CmdEsTipoSentenciaLenguaje
     sentencia->expresion_secundaria = NULL;
     sentencia->bloque_principal = NULL;
     sentencia->bloque_secundario = NULL;
+    sentencia->parametros = NULL;
     return sentencia;
 }
 
@@ -688,6 +948,25 @@ static CmdEsSentenciaLenguaje *crear_sentencia_para(char *identificador, CmdEsEx
     return sentencia;
 }
 
+static CmdEsSentenciaLenguaje *crear_sentencia_funcion(CmdEsTipoDato tipo_dato, char *identificador, CmdEsParametroFuncion *parametros, CmdEsSentenciaLenguaje *bloque_principal) {
+    CmdEsSentenciaLenguaje *sentencia;
+
+    sentencia = crear_sentencia_simple(CMD_ES_SENTENCIA_FUNCION);
+    sentencia->tipo_dato = tipo_dato;
+    sentencia->identificador = identificador;
+    sentencia->parametros = parametros;
+    sentencia->bloque_principal = bloque_principal;
+    return sentencia;
+}
+
+static CmdEsSentenciaLenguaje *crear_sentencia_retornar(CmdEsExpresion *expresion) {
+    CmdEsSentenciaLenguaje *sentencia;
+
+    sentencia = crear_sentencia_simple(CMD_ES_SENTENCIA_RETORNAR);
+    sentencia->expresion_principal = expresion;
+    return sentencia;
+}
+
 static CmdEsSentenciaLenguaje *crear_sentencia_romper(void) {
     return crear_sentencia_simple(CMD_ES_SENTENCIA_ROMPER);
 }
@@ -723,28 +1002,41 @@ static void liberar_sentencia_lenguaje(CmdEsSentenciaLenguaje *sentencia) {
         liberar_expresion(sentencia->expresion_secundaria);
         liberar_sentencia_lenguaje(sentencia->bloque_principal);
         liberar_sentencia_lenguaje(sentencia->bloque_secundario);
+        liberar_parametros_funcion(sentencia->parametros);
         free(sentencia);
         sentencia = siguiente;
     }
 }
 
-static int validar_sentencia_lenguaje(const CmdEsSentenciaLenguaje *sentencia, int profundidad_ciclo) {
+static int validar_sentencia_lenguaje(const CmdEsSentenciaLenguaje *sentencia, int profundidad_ciclo, int dentro_funcion) {
     const CmdEsSentenciaLenguaje *actual;
 
     for (actual = sentencia; actual != NULL; actual = actual->siguiente) {
         switch (actual->tipo_sentencia) {
             case CMD_ES_SENTENCIA_SI:
-                if (!validar_sentencia_lenguaje(actual->bloque_principal, profundidad_ciclo)) {
+                if (!validar_sentencia_lenguaje(actual->bloque_principal, profundidad_ciclo, dentro_funcion)) {
                     return 0;
                 }
 
-                if (!validar_sentencia_lenguaje(actual->bloque_secundario, profundidad_ciclo)) {
+                if (!validar_sentencia_lenguaje(actual->bloque_secundario, profundidad_ciclo, dentro_funcion)) {
                     return 0;
                 }
                 break;
             case CMD_ES_SENTENCIA_MIENTRAS:
             case CMD_ES_SENTENCIA_PARA:
-                if (!validar_sentencia_lenguaje(actual->bloque_principal, profundidad_ciclo + 1)) {
+                if (!validar_sentencia_lenguaje(actual->bloque_principal, profundidad_ciclo + 1, dentro_funcion)) {
+                    return 0;
+                }
+                break;
+            case CMD_ES_SENTENCIA_FUNCION:
+                if (!validar_sentencia_lenguaje(actual->bloque_principal, 0, 1)) {
+                    return 0;
+                }
+                break;
+            case CMD_ES_SENTENCIA_RETORNAR:
+                if (!dentro_funcion) {
+                    cmd_es_linea_invalida = 1;
+                    fprintf(stderr, "Error semantico (linea %d): RETORNAR solo puede usarse dentro de una funcion.\n", numero_linea_comando());
                     return 0;
                 }
                 break;
@@ -840,6 +1132,12 @@ static CmdEsResultadoEjecucion ejecutar_sentencia_individual(CmdEsSentenciaLengu
             imprimir_valor_lenguaje(valor);
             liberar_valor(valor);
             return CMD_ES_RESULTADO_NORMAL;
+        case CMD_ES_SENTENCIA_FUNCION:
+            if (!registrar_funcion_lenguaje(sentencia)) {
+                return CMD_ES_RESULTADO_ERROR;
+            }
+
+            return CMD_ES_RESULTADO_NORMAL;
         case CMD_ES_SENTENCIA_SI:
             valor = evaluar_expresion(sentencia->expresion_principal);
 
@@ -886,6 +1184,10 @@ static CmdEsResultadoEjecucion ejecutar_sentencia_individual(CmdEsSentenciaLengu
 
                 if (resultado == CMD_ES_RESULTADO_ERROR) {
                     return CMD_ES_RESULTADO_ERROR;
+                }
+
+                if (resultado == CMD_ES_RESULTADO_RETORNAR) {
+                    return CMD_ES_RESULTADO_RETORNAR;
                 }
 
                 if (resultado == CMD_ES_RESULTADO_ROMPER) {
@@ -945,6 +1247,12 @@ static CmdEsResultadoEjecucion ejecutar_sentencia_individual(CmdEsSentenciaLengu
                         return CMD_ES_RESULTADO_ERROR;
                     }
 
+                    if (resultado == CMD_ES_RESULTADO_RETORNAR) {
+                        liberar_valor(inicio);
+                        liberar_valor(limite);
+                        return CMD_ES_RESULTADO_RETORNAR;
+                    }
+
                     if (resultado == CMD_ES_RESULTADO_ROMPER) {
                         break;
                     }
@@ -981,6 +1289,12 @@ static CmdEsResultadoEjecucion ejecutar_sentencia_individual(CmdEsSentenciaLengu
                         return CMD_ES_RESULTADO_ERROR;
                     }
 
+                    if (resultado == CMD_ES_RESULTADO_RETORNAR) {
+                        liberar_valor(inicio);
+                        liberar_valor(limite);
+                        return CMD_ES_RESULTADO_RETORNAR;
+                    }
+
                     if (resultado == CMD_ES_RESULTADO_ROMPER) {
                         break;
                     }
@@ -992,6 +1306,37 @@ static CmdEsResultadoEjecucion ejecutar_sentencia_individual(CmdEsSentenciaLengu
             liberar_valor(inicio);
             liberar_valor(limite);
             return CMD_ES_RESULTADO_NORMAL;
+        }
+        case CMD_ES_SENTENCIA_RETORNAR: {
+            CmdEsMarcoLlamada *marco;
+            CmdEsValor *valor_convertido;
+
+            marco = marco_llamada_actual();
+
+            if (marco == NULL || marco->funcion == NULL) {
+                cmd_es_linea_invalida = 1;
+                fprintf(stderr, "Error semantico (linea %d): RETORNAR solo puede usarse dentro de una funcion.\n", numero_linea_comando());
+                return CMD_ES_RESULTADO_ERROR;
+            }
+
+            valor = evaluar_expresion(sentencia->expresion_principal);
+
+            if (valor == NULL || valor->tipo == CMD_ES_TIPO_INVALIDO) {
+                liberar_valor(valor);
+                return CMD_ES_RESULTADO_ERROR;
+            }
+
+            valor_convertido = convertir_valor_a_tipo(marco->funcion->tipo_retorno, valor, marco->funcion->nombre);
+            liberar_valor(valor);
+
+            if (valor_convertido == NULL || valor_convertido->tipo == CMD_ES_TIPO_INVALIDO) {
+                liberar_valor(valor_convertido);
+                return CMD_ES_RESULTADO_ERROR;
+            }
+
+            liberar_valor(marco->valor_retorno);
+            marco->valor_retorno = valor_convertido;
+            return CMD_ES_RESULTADO_RETORNAR;
         }
         case CMD_ES_SENTENCIA_ROMPER:
             return CMD_ES_RESULTADO_ROMPER;
@@ -1088,6 +1433,14 @@ static void liberar_valor(CmdEsValor *valor) {
 
 static CmdEsValor *obtener_valor_identificador(const char *identificador) {
     int indice;
+    CmdEsMarcoLlamada *marco;
+
+    marco = marco_llamada_actual();
+    indice = buscar_indice_variable_local(marco, identificador);
+
+    if (indice >= 0 && marco != NULL && marco->variables[indice].valor != NULL) {
+        return copiar_valor_lenguaje(marco->variables[indice].valor);
+    }
 
     indice = buscar_indice_variable_lenguaje(identificador);
 
@@ -1473,6 +1826,74 @@ static CmdEsValor *operar_negativo(CmdEsValor *valor) {
     return resultado;
 }
 
+static int buscar_indice_funcion_lenguaje(const char *nombre) {
+    int i;
+
+    for (i = 0; i < CMD_ES_MAX_FUNCIONES_LENGUAJE; ++i) {
+        if (!cmd_es_funciones_lenguaje[i].en_uso) {
+            continue;
+        }
+
+        if (strcmp(cmd_es_funciones_lenguaje[i].nombre, nombre) == 0) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+static CmdEsMarcoLlamada *marco_llamada_actual(void) {
+    if (cmd_es_profundidad_llamadas <= 0) {
+        return NULL;
+    }
+
+    return &cmd_es_pila_llamadas[cmd_es_profundidad_llamadas - 1];
+}
+
+static int buscar_indice_variable_local(const CmdEsMarcoLlamada *marco, const char *nombre) {
+    int i;
+
+    if (marco == NULL) {
+        return -1;
+    }
+
+    for (i = 0; i < CMD_ES_MAX_VARIABLES_LENGUAJE; ++i) {
+        if (!marco->variables[i].en_uso) {
+            continue;
+        }
+
+        if (strcmp(marco->variables[i].nombre, nombre) == 0) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+static void limpiar_variables_marco(CmdEsMarcoLlamada *marco) {
+    int i;
+
+    if (marco == NULL) {
+        return;
+    }
+
+    for (i = 0; i < CMD_ES_MAX_VARIABLES_LENGUAJE; ++i) {
+        if (!marco->variables[i].en_uso) {
+            continue;
+        }
+
+        liberar_valor(marco->variables[i].valor);
+        marco->variables[i].valor = NULL;
+        marco->variables[i].en_uso = 0;
+        marco->variables[i].nombre[0] = '\0';
+        marco->variables[i].tipo = CMD_ES_TIPO_INVALIDO;
+    }
+
+    liberar_valor(marco->valor_retorno);
+    marco->valor_retorno = NULL;
+    marco->funcion = NULL;
+}
+
 static int buscar_indice_variable_lenguaje(const char *nombre) {
     int i;
 
@@ -1493,6 +1914,8 @@ static int guardar_variable_lenguaje(const char *nombre, CmdEsTipoDato tipo_dato
     int indice;
     int i;
     CmdEsValor *valor_guardado;
+    CmdEsMarcoLlamada *marco;
+    CmdEsVariableLenguaje *tabla;
 
     if (!nombre_variable_valido(nombre)) {
         cmd_es_linea_invalida = 1;
@@ -1500,7 +1923,11 @@ static int guardar_variable_lenguaje(const char *nombre, CmdEsTipoDato tipo_dato
         return 0;
     }
 
-    if (buscar_indice_variable_lenguaje(nombre) >= 0) {
+    marco = marco_llamada_actual();
+    tabla = marco != NULL ? marco->variables : cmd_es_variables_lenguaje;
+
+    if ((marco != NULL && buscar_indice_variable_local(marco, nombre) >= 0)
+        || (marco == NULL && buscar_indice_variable_lenguaje(nombre) >= 0)) {
         cmd_es_linea_invalida = 1;
         fprintf(stderr, "Error semantico (linea %d): la variable '%s' ya fue declarada.\n", numero_linea_comando(), nombre);
         return 0;
@@ -1509,7 +1936,7 @@ static int guardar_variable_lenguaje(const char *nombre, CmdEsTipoDato tipo_dato
     indice = -1;
 
     for (i = 0; i < CMD_ES_MAX_VARIABLES_LENGUAJE; ++i) {
-        if (!cmd_es_variables_lenguaje[i].en_uso) {
+        if (!tabla[i].en_uso) {
             indice = i;
             break;
         }
@@ -1532,22 +1959,39 @@ static int guardar_variable_lenguaje(const char *nombre, CmdEsTipoDato tipo_dato
         return 0;
     }
 
-    if (!guardar_texto_limitado(nombre, cmd_es_variables_lenguaje[indice].nombre, sizeof(cmd_es_variables_lenguaje[indice].nombre))) {
+    if (!guardar_texto_limitado(nombre, tabla[indice].nombre, sizeof(tabla[indice].nombre))) {
         cmd_es_linea_invalida = 1;
         fprintf(stderr, "Error semantico (linea %d): identificador demasiado largo: %s.\n", numero_linea_comando(), nombre);
         liberar_valor(valor_guardado);
         return 0;
     }
 
-    cmd_es_variables_lenguaje[indice].en_uso = 1;
-    cmd_es_variables_lenguaje[indice].tipo = tipo_dato;
-    cmd_es_variables_lenguaje[indice].valor = valor_guardado;
+    tabla[indice].en_uso = 1;
+    tabla[indice].tipo = tipo_dato;
+    tabla[indice].valor = valor_guardado;
     return 1;
 }
 
 static int asignar_variable_lenguaje(const char *nombre, const CmdEsValor *valor) {
     int indice;
     CmdEsValor *valor_guardado;
+    CmdEsMarcoLlamada *marco;
+
+    marco = marco_llamada_actual();
+    indice = buscar_indice_variable_local(marco, nombre);
+
+    if (indice >= 0 && marco != NULL) {
+        valor_guardado = convertir_valor_a_tipo(marco->variables[indice].tipo, valor, nombre);
+
+        if (valor_guardado == NULL || valor_guardado->tipo == CMD_ES_TIPO_INVALIDO) {
+            liberar_valor(valor_guardado);
+            return 0;
+        }
+
+        liberar_valor(marco->variables[indice].valor);
+        marco->variables[indice].valor = valor_guardado;
+        return 1;
+    }
 
     indice = buscar_indice_variable_lenguaje(nombre);
 
@@ -1572,6 +2016,7 @@ static int asignar_variable_lenguaje(const char *nombre, const CmdEsValor *valor
 static int asignar_variable_control_para(const char *nombre, const CmdEsValor *valor) {
     int indice;
     CmdEsTipoDato tipo_dato;
+    CmdEsMarcoLlamada *marco;
 
     if (valor == NULL || valor->tipo == CMD_ES_TIPO_INVALIDO) {
         return 0;
@@ -1581,6 +2026,19 @@ static int asignar_variable_control_para(const char *nombre, const CmdEsValor *v
         cmd_es_linea_invalida = 1;
         fprintf(stderr, "Error semantico (linea %d): la variable de control de PARA debe ser numerica.\n", numero_linea_comando());
         return 0;
+    }
+
+    marco = marco_llamada_actual();
+    indice = buscar_indice_variable_local(marco, nombre);
+
+    if (indice >= 0 && marco != NULL) {
+        if (!valor_es_numerico(marco->variables[indice].valor)) {
+            cmd_es_linea_invalida = 1;
+            fprintf(stderr, "Error semantico (linea %d): la variable '%s' ya existe y no es numerica para usarla en PARA.\n", numero_linea_comando(), nombre);
+            return 0;
+        }
+
+        return asignar_variable_lenguaje(nombre, valor);
     }
 
     indice = buscar_indice_variable_lenguaje(nombre);
@@ -1597,6 +2055,233 @@ static int asignar_variable_control_para(const char *nombre, const CmdEsValor *v
     }
 
     return asignar_variable_lenguaje(nombre, valor);
+}
+
+static int registrar_funcion_lenguaje(CmdEsSentenciaLenguaje *sentencia) {
+    int indice;
+    int i;
+    int cantidad_parametros;
+    CmdEsParametroFuncion *parametro;
+    CmdEsParametroFuncion *comparador;
+
+    if (sentencia == NULL || sentencia->identificador == NULL) {
+        return 0;
+    }
+
+    if (!nombre_variable_valido(sentencia->identificador)) {
+        cmd_es_linea_invalida = 1;
+        fprintf(stderr, "Error semantico (linea %d): nombre de funcion invalido: %s.\n", numero_linea_comando(), sentencia->identificador);
+        return 0;
+    }
+
+    if (buscar_indice_funcion_lenguaje(sentencia->identificador) >= 0) {
+        cmd_es_linea_invalida = 1;
+        fprintf(stderr, "Error semantico (linea %d): la funcion '%s' ya fue declarada.\n", numero_linea_comando(), sentencia->identificador);
+        return 0;
+    }
+
+    cantidad_parametros = 0;
+
+    for (parametro = sentencia->parametros; parametro != NULL; parametro = parametro->siguiente) {
+        if (!nombre_variable_valido(parametro->nombre)) {
+            cmd_es_linea_invalida = 1;
+            fprintf(stderr, "Error semantico (linea %d): parametro invalido en funcion '%s'.\n", numero_linea_comando(), sentencia->identificador);
+            return 0;
+        }
+
+        for (comparador = parametro->siguiente; comparador != NULL; comparador = comparador->siguiente) {
+            if (strcmp(parametro->nombre, comparador->nombre) == 0) {
+                cmd_es_linea_invalida = 1;
+                fprintf(stderr, "Error semantico (linea %d): parametro repetido '%s' en funcion '%s'.\n", numero_linea_comando(), parametro->nombre, sentencia->identificador);
+                return 0;
+            }
+        }
+
+        ++cantidad_parametros;
+
+        if (cantidad_parametros > CMD_ES_MAX_PARAMETROS_FUNCION) {
+            cmd_es_linea_invalida = 1;
+            fprintf(stderr, "Error semantico (linea %d): la funcion '%s' excede el maximo de parametros soportados.\n", numero_linea_comando(), sentencia->identificador);
+            return 0;
+        }
+    }
+
+    indice = -1;
+
+    for (i = 0; i < CMD_ES_MAX_FUNCIONES_LENGUAJE; ++i) {
+        if (!cmd_es_funciones_lenguaje[i].en_uso) {
+            indice = i;
+            break;
+        }
+    }
+
+    if (indice < 0) {
+        cmd_es_linea_invalida = 1;
+        fprintf(stderr, "Error semantico (linea %d): no hay espacio para mas funciones.\n", numero_linea_comando());
+        return 0;
+    }
+
+    if (!guardar_texto_limitado(sentencia->identificador, cmd_es_funciones_lenguaje[indice].nombre, sizeof(cmd_es_funciones_lenguaje[indice].nombre))) {
+        cmd_es_linea_invalida = 1;
+        fprintf(stderr, "Error semantico (linea %d): nombre de funcion demasiado largo: %s.\n", numero_linea_comando(), sentencia->identificador);
+        return 0;
+    }
+
+    cmd_es_funciones_lenguaje[indice].en_uso = 1;
+    cmd_es_funciones_lenguaje[indice].tipo_retorno = sentencia->tipo_dato;
+    cmd_es_funciones_lenguaje[indice].parametros = sentencia->parametros;
+    cmd_es_funciones_lenguaje[indice].cuerpo = sentencia->bloque_principal;
+    cmd_es_funciones_lenguaje[indice].en_ejecucion = 0;
+
+    sentencia->parametros = NULL;
+    sentencia->bloque_principal = NULL;
+    return 1;
+}
+
+static CmdEsValor *ejecutar_llamada_funcion(const char *nombre, CmdEsArgumentoExpresion *argumentos) {
+    CmdEsFuncionLenguaje *funcion;
+    CmdEsMarcoLlamada *marco;
+    CmdEsParametroFuncion *parametro;
+    CmdEsArgumentoExpresion *argumento;
+    CmdEsValor *valores_convertidos[CMD_ES_MAX_PARAMETROS_FUNCION];
+    CmdEsResultadoEjecucion resultado;
+    CmdEsValor *valor_retorno;
+    int indice;
+    int cantidad;
+    int i;
+
+    for (i = 0; i < CMD_ES_MAX_PARAMETROS_FUNCION; ++i) {
+        valores_convertidos[i] = NULL;
+    }
+
+    indice = buscar_indice_funcion_lenguaje(nombre);
+
+    if (indice < 0) {
+        cmd_es_linea_invalida = 1;
+        fprintf(stderr, "Error semantico (linea %d): funcion no declarada: %s.\n", numero_linea_comando(), nombre);
+        return crear_valor_invalido();
+    }
+
+    funcion = &cmd_es_funciones_lenguaje[indice];
+
+    if (funcion->en_ejecucion) {
+        cmd_es_linea_invalida = 1;
+        fprintf(stderr, "Error semantico (linea %d): recursion no soportada en la funcion '%s'.\n", numero_linea_comando(), nombre);
+        return crear_valor_invalido();
+    }
+
+    parametro = funcion->parametros;
+    argumento = argumentos;
+    cantidad = 0;
+
+    while (parametro != NULL && argumento != NULL) {
+        CmdEsValor *valor_argumento;
+
+        if (cantidad >= CMD_ES_MAX_PARAMETROS_FUNCION) {
+            cmd_es_linea_invalida = 1;
+            fprintf(stderr, "Error semantico (linea %d): demasiados argumentos en llamada a '%s'.\n", numero_linea_comando(), nombre);
+            return crear_valor_invalido();
+        }
+
+        valor_argumento = evaluar_expresion(argumento->expresion);
+
+        if (valor_argumento == NULL || valor_argumento->tipo == CMD_ES_TIPO_INVALIDO) {
+            liberar_valor(valor_argumento);
+            for (i = 0; i < cantidad; ++i) {
+                liberar_valor(valores_convertidos[i]);
+            }
+            return crear_valor_invalido();
+        }
+
+        valores_convertidos[cantidad] = convertir_valor_a_tipo(parametro->tipo, valor_argumento, parametro->nombre);
+        liberar_valor(valor_argumento);
+
+        if (valores_convertidos[cantidad] == NULL || valores_convertidos[cantidad]->tipo == CMD_ES_TIPO_INVALIDO) {
+            liberar_valor(valores_convertidos[cantidad]);
+            for (i = 0; i < cantidad; ++i) {
+                liberar_valor(valores_convertidos[i]);
+            }
+            return crear_valor_invalido();
+        }
+
+        ++cantidad;
+        parametro = parametro->siguiente;
+        argumento = argumento->siguiente;
+    }
+
+    if (parametro != NULL || argumento != NULL) {
+        cmd_es_linea_invalida = 1;
+        fprintf(stderr, "Error semantico (linea %d): cantidad de argumentos invalida en llamada a '%s'.\n", numero_linea_comando(), nombre);
+        for (i = 0; i < cantidad; ++i) {
+            liberar_valor(valores_convertidos[i]);
+        }
+        return crear_valor_invalido();
+    }
+
+    if (cmd_es_profundidad_llamadas >= CMD_ES_MAX_PROFUNDIDAD_LLAMADAS) {
+        cmd_es_linea_invalida = 1;
+        fprintf(stderr, "Error semantico (linea %d): se excedio la profundidad maxima de llamadas.\n", numero_linea_comando());
+        for (i = 0; i < cantidad; ++i) {
+            liberar_valor(valores_convertidos[i]);
+        }
+        return crear_valor_invalido();
+    }
+
+    marco = &cmd_es_pila_llamadas[cmd_es_profundidad_llamadas];
+    memset(marco, 0, sizeof(*marco));
+    marco->funcion = funcion;
+    ++cmd_es_profundidad_llamadas;
+    funcion->en_ejecucion = 1;
+
+    parametro = funcion->parametros;
+    i = 0;
+
+    while (parametro != NULL) {
+        if (!guardar_variable_lenguaje(parametro->nombre, parametro->tipo, valores_convertidos[i])) {
+            int j;
+
+            for (j = i; j < cantidad; ++j) {
+                liberar_valor(valores_convertidos[j]);
+            }
+
+            funcion->en_ejecucion = 0;
+            --cmd_es_profundidad_llamadas;
+            limpiar_variables_marco(marco);
+            return crear_valor_invalido();
+        }
+
+        liberar_valor(valores_convertidos[i]);
+        parametro = parametro->siguiente;
+        ++i;
+    }
+
+    resultado = ejecutar_sentencia_lenguaje(funcion->cuerpo);
+    valor_retorno = marco->valor_retorno;
+    marco->valor_retorno = NULL;
+    funcion->en_ejecucion = 0;
+    --cmd_es_profundidad_llamadas;
+    limpiar_variables_marco(marco);
+
+    if (resultado == CMD_ES_RESULTADO_ERROR) {
+        liberar_valor(valor_retorno);
+        return crear_valor_invalido();
+    }
+
+    if (resultado == CMD_ES_RESULTADO_ROMPER || resultado == CMD_ES_RESULTADO_CONTINUAR) {
+        cmd_es_linea_invalida = 1;
+        fprintf(stderr, "Error semantico (linea %d): la funcion '%s' termino con un control de flujo invalido.\n", numero_linea_comando(), nombre);
+        liberar_valor(valor_retorno);
+        return crear_valor_invalido();
+    }
+
+    if (resultado != CMD_ES_RESULTADO_RETORNAR || valor_retorno == NULL) {
+        cmd_es_linea_invalida = 1;
+        fprintf(stderr, "Error semantico (linea %d): la funcion '%s' no retorno un valor.\n", numero_linea_comando(), nombre);
+        liberar_valor(valor_retorno);
+        return crear_valor_invalido();
+    }
+
+    return valor_retorno;
 }
 
 static CmdEsValor *convertir_valor_a_tipo(CmdEsTipoDato tipo_dato, const CmdEsValor *valor, const char *identificador) {
@@ -1694,7 +2379,7 @@ static double valor_a_decimal(const CmdEsValor *valor) {
 }
 
 static void mostrar_ayuda(void) {
-    printf("AYUDA: Comandos disponibles: AYUDA, VERSION, FECHA, HORA, LIMPIAR, LISTAR, ECO <texto>, PAUSA, TITULO <texto>, COLOR <codigo>, ARBOL, BUSCAR <texto> <archivo>, BUSCAR_TEXTO <texto> <archivo>, MAS <archivo>, ORDENAR <archivo>, COMPARAR <archivo1> <archivo2>, SIMBOLO <texto>, RUTA [texto], DEFINIR [nombre | nombre=valor], CAMBIAR_DIR <nombre | . | ..>, CREAR_DIR <nombre>, ELIMINAR_DIR <nombre>, MOSTRAR <archivo>, ELIMINAR <archivo>, RENOMBRAR <origen> <destino>, COPIAR <origen> <destino>, MOVER <origen> <destino>, lenguaje: var <tipo> <id> [= expresion];, <id> = expresion;, imprimir(expresion);, si (condicion) { ... } [sino { ... }], mientras (condicion) { ... }, para id = inicio hasta limite { ... }, romper;, continuar;, SALIR\n");
+    printf("AYUDA: Comandos disponibles: AYUDA, VERSION, FECHA, HORA, LIMPIAR, LISTAR, ECO <texto>, PAUSA, TITULO <texto>, COLOR <codigo>, ARBOL, BUSCAR <texto> <archivo>, BUSCAR_TEXTO <texto> <archivo>, MAS <archivo>, ORDENAR <archivo>, COMPARAR <archivo1> <archivo2>, SIMBOLO <texto>, RUTA [texto], DEFINIR [nombre | nombre=valor], CAMBIAR_DIR <nombre | . | ..>, CREAR_DIR <nombre>, ELIMINAR_DIR <nombre>, MOSTRAR <archivo>, ELIMINAR <archivo>, RENOMBRAR <origen> <destino>, COPIAR <origen> <destino>, MOVER <origen> <destino>, lenguaje: var <tipo> <id> [= expresion];, <id> = expresion;, imprimir(expresion);, si (condicion) { ... } [sino { ... }], mientras (condicion) { ... }, para id = inicio hasta limite { ... }, funcion <tipo> nombre(parametros) { ... }, retornar expresion;, romper;, continuar;, SALIR\n");
 }
 
 static void inicializar_entorno_interno(void) {
